@@ -1,0 +1,21 @@
+# Local secrets / overrides
+local.config.json
+.env
+.env.*
+*.local.json
+token.json
+
+# Runtime artifacts
+data/
+logs/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Python env/caches
+.venv/
+__pycache__/
+*.pyc
+dist/
+build/

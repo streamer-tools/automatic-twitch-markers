@@ -1,0 +1,2 @@
+# Install in editable mode - dependencies are sourced from pyproject.toml
+-e .
