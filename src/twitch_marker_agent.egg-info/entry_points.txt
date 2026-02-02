@@ -1,2 +1,0 @@
-[console_scripts]
-twitch-marker-agent = twitch_marker_agent.cli:main
