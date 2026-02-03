@@ -12,6 +12,7 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+*.egg-info/
 
 # Python env/caches
 .venv/
