@@ -125,7 +125,7 @@ src/twitch_marker_agent/
 
 ## Next Implementation Steps
 
-1. [ ] Implement OAuth browser flow in `twitch_oauth.py`
+1. [x] Implement OAuth browser flow in `twitch_oauth.py`
 2. [ ] Implement token refresh logic
 3. [ ] Connect EventSub WebSocket in `eventsub_ws.py`
 4. [ ] Handle `session_welcome` and create subscription
@@ -137,6 +137,15 @@ src/twitch_marker_agent/
 10. [ ] Add Windows startup integration
 
 ## Changelog
+
+### v0.2.0 (2026-02-02)
+- Implemented OAuth browser login flow in `twitch_oauth.py`
+- Added `auth-login` CLI command for Twitch authentication
+- Pure helper functions for unit testing (build_authorize_url, parse_redirect_uri, etc.)
+- Dependency injection for HTTP session and browser opener
+- Secure token storage in SQLite (access token, refresh token, expiry)
+- CSRF protection with state parameter validation
+- Comprehensive unit tests for OAuth module (20 new tests)
 
 ### v0.1.0 (2026-02-01)
 - Initial scaffold created
