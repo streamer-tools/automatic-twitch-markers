@@ -126,7 +126,7 @@ src/twitch_marker_agent/
 ## Next Implementation Steps
 
 1. [x] Implement OAuth browser flow in `twitch_oauth.py`
-2. [ ] Implement token refresh logic
+2. [x] Implement token refresh logic
 3. [ ] Connect EventSub WebSocket in `eventsub_ws.py`
 4. [ ] Handle `session_welcome` and create subscription
 5. [ ] Implement `stream.offline` event handler
@@ -137,6 +137,19 @@ src/twitch_marker_agent/
 10. [ ] Add Windows startup integration
 
 ## Changelog
+
+### v0.2.1 (2026-02-02)
+- **Phase C Token Maintenance:**
+  - `refresh_access_token()` - refresh tokens using stored refresh_token
+  - `validate_access_token(token)` - validate token with Twitch API
+  - `get_valid_user_access_token(min_ttl_seconds=300)` - get valid token, auto-refresh if near expiry
+  - Concurrency-safe using `threading.RLock()` (re-entrant lock)
+  - Expiry hardening for missing/invalid/naive datetime values
+- **Phase C Patch:**
+  - Direct calls to `refresh_access_token()` now also protected by lock
+  - Added tests for refresh payload fields and timeout tuple verification
+  - Updated documentation to reflect Phase C completion
+- Unit tests: 80 total (was 62)
 
 ### v0.2.0 (2026-02-02)
 - Implemented OAuth browser login flow in `twitch_oauth.py`

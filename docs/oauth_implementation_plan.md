@@ -1,19 +1,19 @@
 # Twitch OAuth Implementation Plan
 
-Implement OAuth login flow only (no refresh/validate) for Twitch API access.
+Complete OAuth implementation including login flow (Phase B) and token maintenance (Phase C).
 
 ---
 
 ## Overview
 
-**Goal:** Enable `auth-login` CLI command that opens browser, receives OAuth callback, exchanges code for tokens, and stores them in SQLite.
+**Goal:** Full OAuth lifecycle: browser login, token storage, refresh, validation, and expiry-aware access.
 
-**Scope:** Login flow only. Refresh and validate are stubbed for future phases.
+**Status:** ✅ Phase B (login) + Phase C (token maintenance) complete.
 
 **Files:**
-- `src/twitch_marker_agent/core/twitch_oauth.py` (modify)
-- `src/twitch_marker_agent/cli.py` (modify)
-- `tests/test_twitch_oauth.py` (create)
+- `src/twitch_marker_agent/core/twitch_oauth.py` (implemented)
+- `src/twitch_marker_agent/cli.py` (`auth-login` command)
+- `tests/test_twitch_oauth.py` (80 tests)
 
 ---
 
@@ -159,14 +159,14 @@ expires_at_str = expires_at.isoformat()  # "2026-02-02T21:30:00.123456+00:00"
 
 ## Phase B Scope
 
-### Implemented Methods
+### Implemented Methods (Phase B)
 - `build_authorize_url(scopes: list[str]) -> str`
 - `interactive_login(timeout_seconds: int = 120) -> None`
 
-### Stubbed Methods (NotImplementedError)
-- `refresh_access_token()`
-- `get_valid_user_access_token()`
-- `validate_access_token()`
+### Implemented Methods (Phase C)
+- `refresh_access_token() -> None`
+- `validate_access_token(token: str) -> dict | None`
+- `get_valid_user_access_token(min_ttl_seconds: int = 300) -> str`
 
 ### CLI Command
 ```powershell
@@ -300,16 +300,24 @@ else:
 
 #### 7) Concurrency Safety
 
-**Yes, add instance-level lock:**
+**Uses re-entrant lock (RLock):**
 ```python
-self._refresh_lock = threading.Lock()
+self._refresh_lock = threading.RLock()
 ```
+
+**Why RLock:** `get_valid_user_access_token()` acquires the lock and calls `refresh_access_token()`, which also acquires the lock. RLock allows re-entry from the same thread, preventing deadlock.
 
 **Usage:**
 ```python
+# In refresh_access_token():
 with self._refresh_lock:
-    # check expiry again (double-check pattern)
-    # if still needs refresh: do refresh
+    self._refresh_access_token_unlocked()
+
+# In get_valid_user_access_token():
+with self._refresh_lock:
+    # double-check pattern: re-evaluate if refresh still needed
+    if still_needs_refresh:
+        self.refresh_access_token()  # RLock allows re-entry
 ```
 
 **Testing:** 
@@ -357,3 +365,28 @@ Test logic without real threads by mocking. The lock prevents race conditions in
 python -m unittest discover -s tests -v
 python -c "from twitch_marker_agent.core.twitch_oauth import TwitchOAuth"
 ```
+
+---
+
+### Phase C Implementation Results
+
+**Status:** ✅ Complete (with Phase C Patch)
+
+**Changes Made:**
+
+1. **`refresh_access_token()`** - POST to token endpoint with `grant_type=refresh_token`, stores new access_token/expires_at, rotates refresh_token only if response includes one. Concurrency-safe (uses RLock).
+
+2. **`validate_access_token(token)`** - GET to validate endpoint with `Authorization: OAuth <token>` header, returns dict on 200, None on 401.
+
+3. **`get_valid_user_access_token(min_ttl_seconds=300)`** - Returns cached token if fresh, refreshes if TTL <= min_ttl_seconds or expired/invalid, raises TokenRefreshError if not authenticated.
+
+4. **Concurrency** - Uses `threading.RLock()` (re-entrant) so both direct calls to `refresh_access_token()` and calls via `get_valid_user_access_token()` are safe from concurrent refreshes or deadlock.
+
+5. **Expiry hardening** - Handles missing, invalid, or naive datetime gracefully (treats as expired).
+
+**Tests:**
+- `TestRefreshAccessToken` (8 tests including payload + timeout verification)
+- `TestValidateAccessToken` (3 tests)  
+- `TestGetValidUserAccessToken` (8 tests)
+
+**Total Tests:** 80

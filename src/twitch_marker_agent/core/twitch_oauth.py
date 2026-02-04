@@ -2,14 +2,14 @@
 Twitch OAuth authentication for Twitch Marker Agent.
 
 Handles:
-- One-time browser-based OAuth flow to obtain refresh token
+- Browser-based OAuth flow to obtain tokens
+- Token refresh with concurrency safety (RLock)
+- Token validation via Twitch API
+- Expiry-aware token access
 - Token storage via StateStore abstraction
 
 Required OAuth scopes:
 - user:read:broadcast (required for Get Stream Markers)
-
-Phase B implements: login flow only.
-Refresh and validate are stubbed for future phases.
 """
 
 from __future__ import annotations
@@ -343,80 +343,67 @@ class TwitchOAuth:
         self._logger = logger
         self._http_session = http_session or requests.Session()
         self._browser_opener = browser_opener or webbrowser.open
+        # Phase C: RLock to prevent concurrent token refreshes
+        # RLock allows re-entry (get_valid_user_access_token -> refresh_access_token)
+        self._refresh_lock = threading.RLock()
 
     def has_refresh_token(self) -> bool:
         """
         Check if a refresh token is stored.
 
         Returns:
-            True if refresh token exists, False otherwise.
+            True if a refresh token exists in the state store.
         """
-        token = self._state_store.get_token(self.TOKEN_KEY_REFRESH)
-        return token is not None
+        return self._state_store.get_token(self.TOKEN_KEY_REFRESH) is not None
 
     def get_authorization_url(self, scopes: list[str] | None = None) -> str:
         """
-        Build the Twitch authorization URL with a new random state.
-
-        This method generates a new state each time. For interactive_login,
-        use build_authorize_url directly with a stored state.
+        Build authorization URL for browser-based OAuth flow.
 
         Args:
             scopes: OAuth scopes to request. Defaults to DEFAULT_SCOPES.
 
         Returns:
-            Full authorization URL.
+            Tuple of (authorization_url, state).
         """
         if scopes is None:
             scopes = DEFAULT_SCOPES
-        state = secrets.token_urlsafe(32)
+
+        self._current_state = secrets.token_urlsafe(32)
         return build_authorize_url(
             client_id=self._config.client_id,
             redirect_uri=self._config.redirect_uri,
             scopes=scopes,
-            state=state,
+            state=self._current_state,
         )
 
-    def interactive_login(
-        self,
-        timeout_seconds: int = 120,
-        scopes: list[str] | None = None,
-    ) -> None:
+    def interactive_login(self, timeout_seconds: int = 120) -> None:
         """
         Perform interactive OAuth login via browser.
 
-        Opens the system browser to Twitch authorization page,
-        starts a local HTTP server to receive the callback,
-        exchanges the authorization code for tokens, and stores them.
+        Opens the authorization URL in the default browser, starts a local
+        callback server, waits for the OAuth redirect, and exchanges the
+        authorization code for tokens.
 
         Args:
-            timeout_seconds: Maximum time to wait for callback.
-            scopes: OAuth scopes to request. Defaults to DEFAULT_SCOPES.
+            timeout_seconds: Maximum time to wait for callback (default: 120).
 
         Raises:
             OAuthCancelledError: If user cancels, state mismatch, or port in use.
             OAuthTimeoutError: If callback not received within timeout.
             TokenExchangeError: If token exchange fails.
         """
-        if scopes is None:
-            scopes = DEFAULT_SCOPES
+        redirect_uri = self._config.redirect_uri
 
         # Parse redirect URI to get server binding info
-        try:
-            host, port, path = parse_redirect_uri(self._config.redirect_uri)
-        except ValueError as e:
-            raise OAuthCancelledError(f"Invalid redirect_uri: {e}") from e
+        host, port, path = parse_redirect_uri(redirect_uri)
 
-        # Generate CSRF state
-        state = secrets.token_urlsafe(32)
+        # Generate authorization URL with state
+        auth_url = self.get_authorization_url()
+        state = self._current_state
 
-        # Build authorization URL
-        auth_url = build_authorize_url(
-            client_id=self._config.client_id,
-            redirect_uri=self._config.redirect_uri,
-            scopes=scopes,
-            state=state,
-        )
+        self._logger.info("Starting OAuth login flow")
+        self._logger.debug("Redirect URI: %s (port %d)", redirect_uri, port)
 
         # Shared state for callback handler
         result_container: dict[str, Any] = {}
@@ -499,11 +486,10 @@ class TwitchOAuth:
                 if server_thread is not None:
                     server_thread.join(timeout=5)
                 server.server_close()
-                self._logger.debug("Callback server closed.")
 
     def _exchange_code_for_tokens(self, code: str) -> None:
         """
-        Exchange authorization code for access and refresh tokens.
+        Exchange authorization code for tokens.
 
         Args:
             code: Authorization code from callback.
@@ -574,65 +560,239 @@ class TwitchOAuth:
         self._logger.debug("Tokens stored successfully")
 
     # =========================================================================
-    # Stubbed methods for future phases
+    # Phase C: Token Maintenance Methods
     # =========================================================================
-
-    def get_access_token(self) -> str:
-        """
-        Get a valid access token, refreshing if necessary.
-
-        Returns:
-            Valid access token string.
-
-        Raises:
-            NotImplementedError: Token retrieval not yet implemented.
-        """
-        raise NotImplementedError("TODO: Implement get_access_token (Phase C)")
 
     def refresh_access_token(self) -> None:
         """
-        Refresh the access token using stored refresh token.
+        Refresh the access token using the stored refresh token.
+
+        Updates stored access_token and twitch_token_expires_at.
+        If the response includes a new refresh_token, it is also stored.
+
+        This method is concurrency-safe (uses RLock).
 
         Raises:
-            NotImplementedError: Token refresh not yet implemented.
+            TokenRefreshError: If no refresh token is stored or refresh fails.
         """
-        raise NotImplementedError("TODO: Implement refresh_access_token (Phase C)")
+        with self._refresh_lock:
+            self._refresh_access_token_unlocked()
 
-    def get_valid_user_access_token(self, min_ttl_seconds: int = 60) -> str:
-        """
-        Get a valid user access token, refreshing if close to expiry.
+    def _refresh_access_token_unlocked(self) -> None:
+        """Internal refresh implementation (caller must hold lock)."""
+        refresh_token = self._state_store.get_token(self.TOKEN_KEY_REFRESH)
 
-        Args:
-            min_ttl_seconds: Minimum remaining TTL before refresh.
+        if not refresh_token:
+            self._logger.error("Cannot refresh: no refresh token stored")
+            raise TokenRefreshError(
+                "No refresh token available. Run 'auth-login' to authenticate."
+            )
 
-        Returns:
-            Valid access token.
+        data = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": self._config.client_id,
+            "client_secret": self._config.client_secret,
+        }
 
-        Raises:
-            NotImplementedError: Not yet implemented.
-        """
-        raise NotImplementedError("TODO: Implement get_valid_user_access_token (Phase C)")
+        try:
+            response = self._http_session.post(
+                TWITCH_TOKEN_URL,
+                data=data,
+                timeout=HTTP_TIMEOUT,
+            )
+        except requests.RequestException as e:
+            self._logger.error("Token refresh request failed: %s", type(e).__name__)
+            raise TokenRefreshError(f"Network error during token refresh: {e}") from e
+
+        if response.status_code == 401:
+            # Refresh token is invalid/expired - user must re-authenticate
+            self._logger.error("Refresh token is invalid or expired")
+            raise TokenRefreshError(
+                "Refresh token is invalid or expired. Run 'auth-login' to re-authenticate."
+            )
+
+        if response.status_code != 200:
+            # Other error - try to get safe details
+            try:
+                error_data = response.json()
+                error = error_data.get("error", "unknown")
+                error_desc = error_data.get("error_description", "")
+                self._logger.error("Token refresh failed: %s - %s", error, error_desc)
+            except Exception:
+                self._logger.error("Token refresh failed: HTTP %d", response.status_code)
+
+            raise TokenRefreshError(
+                f"Token refresh failed with HTTP {response.status_code}"
+            )
+
+        # Parse response
+        try:
+            token_data = response.json()
+        except Exception as e:
+            self._logger.error("Failed to parse refresh response")
+            raise TokenRefreshError("Invalid JSON in refresh response") from e
+
+        # Extract tokens
+        access_token = token_data.get("access_token")
+        new_refresh_token = token_data.get("refresh_token")
+        expires_in = token_data.get("expires_in", 0)
+
+        if not access_token:
+            self._logger.error("Refresh response missing access_token")
+            raise TokenRefreshError("Refresh response missing access_token")
+
+        # Store new access token
+        self._state_store.store_token(self.TOKEN_KEY_ACCESS, access_token)
+
+        # Only update refresh token if a new one is provided (rotation safety)
+        if new_refresh_token:
+            self._state_store.store_token(self.TOKEN_KEY_REFRESH, new_refresh_token)
+            self._logger.debug("Refresh token rotated")
+
+        # Update expiry
+        if expires_in > 0:
+            expires_at = compute_expires_at(expires_in)
+            self._state_store.store_token(self.TOKEN_KEY_EXPIRES, expires_at)
+
+        self._logger.info("Access token refreshed successfully")
 
     def validate_access_token(self, token: str) -> dict[str, Any] | None:
         """
         Validate an access token with Twitch.
 
         Args:
-            token: Token to validate.
+            token: The access token to validate.
 
         Returns:
-            Validation response dict if valid, None if invalid.
+            Validation response dict if valid (includes expires_in, login, user_id),
+            or None if the token is invalid (HTTP 401).
 
         Raises:
-            NotImplementedError: Token validation not yet implemented.
+            requests.RequestException: On network errors.
         """
-        raise NotImplementedError("TODO: Implement validate_access_token (Phase C)")
+        headers = {
+            "Authorization": f"OAuth {token}",
+        }
+
+        try:
+            response = self._http_session.get(
+                TWITCH_VALIDATE_URL,
+                headers=headers,
+                timeout=HTTP_TIMEOUT,
+            )
+        except requests.RequestException as e:
+            self._logger.error("Token validation request failed: %s", type(e).__name__)
+            raise
+
+        if response.status_code == 401:
+            self._logger.debug("Token validation returned 401: token is invalid")
+            return None
+
+        if response.status_code != 200:
+            self._logger.error("Token validation failed: HTTP %d", response.status_code)
+            raise requests.RequestException(
+                f"Token validation failed with HTTP {response.status_code}"
+            )
+
+        try:
+            return response.json()
+        except Exception as e:
+            self._logger.error("Failed to parse validation response")
+            raise requests.RequestException("Invalid JSON in validation response") from e
+
+    def get_valid_user_access_token(self, min_ttl_seconds: int = 300) -> str:
+        """
+        Get a valid access token, refreshing if necessary.
+
+        Uses stored expires_at to determine if refresh is needed, avoiding
+        unnecessary network calls.
+
+        Args:
+            min_ttl_seconds: Minimum remaining TTL before triggering refresh.
+                             Defaults to 300 (5 minutes).
+
+        Returns:
+            A valid access token string.
+
+        Raises:
+            TokenRefreshError: If not authenticated or refresh fails.
+        """
+        access_token = self._state_store.get_token(self.TOKEN_KEY_ACCESS)
+
+        if not access_token:
+            self._logger.error("No access token stored")
+            raise TokenRefreshError(
+                "Not authenticated. Run 'auth-login' to authenticate."
+            )
+
+        # Check if refresh is needed
+        needs_refresh = False
+        expires_at_str = self._state_store.get_token(self.TOKEN_KEY_EXPIRES)
+
+        if not expires_at_str:
+            # No expiry stored - refresh to be safe
+            self._logger.debug("No expires_at stored, will refresh")
+            needs_refresh = True
+        else:
+            # Parse expires_at with hardening for invalid/naive values
+            try:
+                expires_at = datetime.fromisoformat(expires_at_str)
+                # Ensure timezone-aware (handle naive datetime)
+                if expires_at.tzinfo is None:
+                    self._logger.warning("Stored expires_at is naive, treating as expired")
+                    needs_refresh = True
+                else:
+                    now = datetime.now(timezone.utc)
+                    ttl = (expires_at - now).total_seconds()
+
+                    if ttl <= 0:
+                        self._logger.debug("Token expired, will refresh")
+                        needs_refresh = True
+                    elif ttl <= min_ttl_seconds:
+                        self._logger.debug("Token near expiry (TTL: %.0fs), will refresh", ttl)
+                        needs_refresh = True
+            except (ValueError, TypeError) as e:
+                # Invalid expires_at format - refresh to be safe
+                self._logger.warning("Invalid expires_at format (%s), treating as expired", e)
+                needs_refresh = True
+
+        if not needs_refresh:
+            return access_token
+
+        # Refresh with lock to prevent concurrent refreshes
+        with self._refresh_lock:
+            # Double-check pattern: re-read after acquiring lock
+            access_token = self._state_store.get_token(self.TOKEN_KEY_ACCESS)
+            expires_at_str = self._state_store.get_token(self.TOKEN_KEY_EXPIRES)
+
+            # Re-evaluate if still needs refresh (another thread may have refreshed)
+            still_needs_refresh = False
+            if not expires_at_str:
+                still_needs_refresh = True
+            else:
+                try:
+                    expires_at = datetime.fromisoformat(expires_at_str)
+                    if expires_at.tzinfo is None:
+                        still_needs_refresh = True
+                    else:
+                        now = datetime.now(timezone.utc)
+                        ttl = (expires_at - now).total_seconds()
+                        if ttl <= min_ttl_seconds:
+                            still_needs_refresh = True
+                except (ValueError, TypeError):
+                    still_needs_refresh = True
+
+            if still_needs_refresh:
+                self.refresh_access_token()
+                access_token = self._state_store.get_token(self.TOKEN_KEY_ACCESS)
+
+        return access_token
 
     def revoke_token(self) -> None:
         """
         Revoke stored tokens and clear from state store.
 
-        Raises:
             NotImplementedError: Token revocation not yet implemented.
         """
         raise NotImplementedError("TODO: Implement token revocation")
