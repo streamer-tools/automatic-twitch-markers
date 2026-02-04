@@ -135,7 +135,7 @@ src/twitch_marker_agent/
 1. [x] Implement OAuth browser flow in `twitch_oauth.py`
 2. [x] Implement token refresh logic
 3. [x] Connect EventSub WebSocket in `eventsub_ws.py`
-4. [ ] Handle `session_welcome` and create subscription (Helix API)
+4. [x] Handle `session_welcome` and create subscription (Helix API)
 5. [ ] Implement `stream.offline` event handler
 6. [ ] Implement Helix Get Stream Markers API call
 7. [ ] Implement CSV export (Twitch format)
@@ -144,6 +144,17 @@ src/twitch_marker_agent/
 10. [ ] Add Windows startup integration
 
 ## Changelog
+
+### v0.3.1 (2026-02-04)
+- **Helix EventSub Subscription Management:**
+  - New module: `eventsub_subscriptions.py`
+  - `create_eventsub_subscription()` - create subscription with websocket transport
+  - `list_eventsub_subscriptions()` - list with mutually-exclusive filter enforcement
+  - `delete_eventsub_subscription()` - delete by subscription ID
+  - `ensure_stream_offline_subscription()` - idempotent subscription setup (list → delete stale → create)
+  - Pure helpers: `build_subscription_request()`, `parse_subscription_response()`
+  - Robust condition parsing (dict or JSON string)
+- Comprehensive tests: 25 new tests (133 total)
 
 ### v0.3.0 (2026-02-04)
 - **EventSub WebSocket Client:**
@@ -159,13 +170,13 @@ src/twitch_marker_agent/
 - Uses `ping_interval=None` to avoid client-initiated pings
 
 ### v0.2.1 (2026-02-02)
-- **Phase C Token Maintenance:**
+- **Token Maintenance:**
   - `refresh_access_token()` - refresh tokens using stored refresh_token
   - `validate_access_token(token)` - validate token with Twitch API
   - `get_valid_user_access_token(min_ttl_seconds=300)` - get valid token, auto-refresh if near expiry
   - Concurrency-safe using `threading.RLock()` (re-entrant lock)
   - Expiry hardening for missing/invalid/naive datetime values
-- **Phase C Patch:**
+- **Token Maintenance Patch:**
   - Direct calls to `refresh_access_token()` now also protected by lock
   - Added tests for refresh payload fields and timeout tuple verification
   - Updated documentation to reflect Phase C completion

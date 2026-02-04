@@ -69,9 +69,9 @@ During scaffold development, modules are implemented incrementally:
 - State storage (`state_store.py`)
 - Retry utility (`retry.py`)
 - EventSub WebSocket (`eventsub_ws.py` - `connect`, `run_until_stopped`, message dispatch)
+- EventSub Subscriptions (`eventsub_subscriptions.py` - `ensure_stream_offline_subscription`, create/list/delete)
 
 **Still Stubbed:**
-- Helix Subscription Creation: `raise NotImplementedError("TODO: Implement subscription")`
 - Helix Markers API: `raise NotImplementedError("TODO: Implement Markers API")`
 - CSV/EDL exports: `raise NotImplementedError("TODO: Implement export")`
 - Agent orchestrator: `raise NotImplementedError("TODO: Implement agent runtime")`
@@ -134,6 +134,7 @@ python -c "from twitch_marker_agent.core import agent"
 | `retry.py` | Sync exponential backoff (async TODO) |
 | `twitch_oauth.py` | Browser OAuth + token refresh/validate |
 | `eventsub_ws.py` | EventSub WebSocket client (connect, message dispatch) |
+| `eventsub_subscriptions.py` | Helix EventSub subscription management (ensure, create, list, delete) |
 | `markers_api.py` | Helix Get Stream Markers (stub) |
 | `export_csv.py` | Twitch-style CSV export (stub) |
 | `export_edl.py` | EDL export with timecode offset (stub) |
