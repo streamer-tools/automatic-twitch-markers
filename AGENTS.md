@@ -60,11 +60,22 @@ If a secret is ever committed by mistake:
 
 ### Stubbing Rules (Scaffold Phase)
 
-During scaffold development:
-- All Twitch API calls: `raise NotImplementedError("TODO: Implement Twitch API call")`
-- All OAuth flows: `raise NotImplementedError("TODO: Implement OAuth flow")`
-- All WebSocket connections: `raise NotImplementedError("TODO: Implement WebSocket")`
-- No real HTTP requests, no browser automation, no network connections
+During scaffold development, modules are implemented incrementally:
+
+**Implemented:**
+- OAuth login flow (`twitch_oauth.py` - `interactive_login`, `auth-login` CLI)
+- Token maintenance (`twitch_oauth.py` - `refresh_access_token`, `validate_access_token`, `get_valid_user_access_token`)
+- Configuration loading (`config.py`)
+- State storage (`state_store.py`)
+- Retry utility (`retry.py`)
+- EventSub WebSocket (`eventsub_ws.py` - `connect`, `run_until_stopped`, message dispatch)
+
+**Still Stubbed:**
+- Helix Subscription Creation: `raise NotImplementedError("TODO: Implement subscription")`
+- Helix Markers API: `raise NotImplementedError("TODO: Implement Markers API")`
+- CSV/EDL exports: `raise NotImplementedError("TODO: Implement export")`
+- Agent orchestrator: `raise NotImplementedError("TODO: Implement agent runtime")`
+- Tray app: `raise NotImplementedError("TODO: Implement tray UI")`
 
 ### Code Standards
 
@@ -121,12 +132,12 @@ python -c "from twitch_marker_agent.core import agent"
 | `config.py` | Load/validate config.json, expose `AppConfig` dataclass |
 | `state_store.py` | SQLite wrapper for state + token storage |
 | `retry.py` | Sync exponential backoff (async TODO) |
-| `twitch_oauth.py` | Browser OAuth + token refresh (stubbed) |
-| `eventsub_ws.py` | EventSub WebSocket client (stubbed) |
-| `markers_api.py` | Helix Get Stream Markers (stubbed) |
-| `export_csv.py` | Twitch-style CSV export |
-| `export_edl.py` | EDL export with timecode offset |
-| `agent.py` | Main orchestrator, coordinates all modules |
+| `twitch_oauth.py` | Browser OAuth + token refresh/validate |
+| `eventsub_ws.py` | EventSub WebSocket client (connect, message dispatch) |
+| `markers_api.py` | Helix Get Stream Markers (stub) |
+| `export_csv.py` | Twitch-style CSV export (stub) |
+| `export_edl.py` | EDL export with timecode offset (stub) |
+| `agent.py` | Main orchestrator, coordinates all modules (stub) |
 
 ## Runtime Artifacts (Local Only)
 

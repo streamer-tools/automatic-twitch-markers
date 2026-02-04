@@ -66,9 +66,16 @@ This agent solves that by:
 
 ### Running
 
-**CLI mode** (future):
+**Authenticate with Twitch** (one-time setup):
 ```powershell
-automatic-twitch-markers
+python -m twitch_marker_agent.cli auth-login
+# or after install:
+auto-twitch-markers auth-login
+```
+
+**CLI mode** (agent runtime - future):
+```powershell
+auto-twitch-markers
 # or
 python -m twitch_marker_agent.cli
 ```
@@ -109,26 +116,26 @@ The agent will request these scopes during OAuth:
 ```
 src/twitch_marker_agent/
 ├── app.py              # Tray app entrypoint (stub)
-├── cli.py              # CLI entrypoint (stub)
+├── cli.py              # CLI entrypoint (auth-login implemented)
 └── core/               # Framework-agnostic core logic
-    ├── agent.py        # Main orchestrator
+    ├── agent.py        # Main orchestrator (stub)
     ├── config.py       # Configuration loading/validation
     ├── eventsub_ws.py  # EventSub WebSocket client
-    ├── export_csv.py   # CSV export (Twitch-style)
-    ├── export_edl.py   # EDL export for editors
+    ├── export_csv.py   # CSV export (Twitch-style, stub)
+    ├── export_edl.py   # EDL export for editors (stub)
     ├── logging_setup.py# Logging configuration
-    ├── markers_api.py  # Helix Get Stream Markers
+    ├── markers_api.py  # Helix Get Stream Markers (stub)
     ├── retry.py        # Exponential backoff utility
     ├── state_store.py  # SQLite state + token storage
-    └── twitch_oauth.py # OAuth login/refresh
+    └── twitch_oauth.py # OAuth login/refresh/validate
 ```
 
 ## Next Implementation Steps
 
 1. [x] Implement OAuth browser flow in `twitch_oauth.py`
 2. [x] Implement token refresh logic
-3. [ ] Connect EventSub WebSocket in `eventsub_ws.py`
-4. [ ] Handle `session_welcome` and create subscription
+3. [x] Connect EventSub WebSocket in `eventsub_ws.py`
+4. [ ] Handle `session_welcome` and create subscription (Helix API)
 5. [ ] Implement `stream.offline` event handler
 6. [ ] Implement Helix Get Stream Markers API call
 7. [ ] Implement CSV export (Twitch format)
@@ -137,6 +144,19 @@ src/twitch_marker_agent/
 10. [ ] Add Windows startup integration
 
 ## Changelog
+
+### v0.3.0 (2026-02-04)
+- **EventSub WebSocket Client:**
+  - `EventSubWebSocketClient` class with full message handling
+  - `connect()` - connect and receive session_welcome with session_id
+  - `run_until_stopped()` - message loop with keepalive timeout detection
+  - `stop()` / `close()` - graceful shutdown
+  - Reconnect handling per Twitch docs (new session_id from new welcome)
+  - Notification dispatch via `asyncio.Queue`
+  - Revocation callback support
+  - Pure helpers: `parse_eventsub_message()`, `classify_message_type()`
+- Comprehensive tests: 28 new tests (108 total)
+- Uses `ping_interval=None` to avoid client-initiated pings
 
 ### v0.2.1 (2026-02-02)
 - **Phase C Token Maintenance:**
