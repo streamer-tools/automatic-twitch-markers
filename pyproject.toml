@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "automatic-twitch-markers"
-version = "0.1.0"
+version = "0.2.1"
 description = "A set-and-forget Twitch Marker Agent that automatically exports stream markers after broadcasts end"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.12"
 authors = [
-    {name = "Your Name", email = "you@example.com"}
+    {name = "CodeWezus", email = "streamertools.dev@gmail.com"}
 ]
 keywords = ["twitch", "stream", "markers", "export", "vod"]
 classifiers = [
@@ -34,8 +34,8 @@ dependencies = [
 auto-twitch-markers = "twitch_marker_agent.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/twitch-marker-agent"
-Repository = "https://github.com/yourusername/twitch-marker-agent"
+Homepage = "https://github.com/streamer-tools/automatic-twitch-markers"
+Repository = "https://github.com/streamer-tools/automatic-twitch-markers"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

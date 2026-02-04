@@ -444,5 +444,524 @@ class TestTwitchOAuthHasRefreshToken(unittest.TestCase):
         self.assertTrue(oauth.has_refresh_token())
 
 
+# =============================================================================
+# Phase C Tests: Token Maintenance
+# =============================================================================
+
+
+class TestRefreshAccessToken(unittest.TestCase):
+    """Tests for refresh_access_token method."""
+
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = Path(self.temp_dir) / "test_state.db"
+        self.state_store = StateStore(self.db_path)
+
+        self.mock_config = MagicMock()
+        self.mock_config.client_id = "test_client_id"
+        self.mock_config.client_secret = "test_client_secret"
+
+        self.mock_logger = MagicMock()
+        self.mock_session = MagicMock()
+
+    def tearDown(self) -> None:
+        """Clean up test fixtures."""
+        import shutil
+        self.state_store.close()
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_refresh_success_stores_access_token(self) -> None:
+        """Successful refresh should store new access token."""
+        # Store initial refresh token
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "old_refresh")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_access_token",
+            "expires_in": 3600,
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        oauth.refresh_access_token()
+
+        self.assertEqual(
+            self.state_store.get_token(TwitchOAuth.TOKEN_KEY_ACCESS),
+            "new_access_token",
+        )
+
+    def test_refresh_success_stores_expires_at(self) -> None:
+        """Successful refresh should store new expires_at."""
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "old_refresh")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_access_token",
+            "expires_in": 7200,
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        oauth.refresh_access_token()
+
+        expires_at = self.state_store.get_token(TwitchOAuth.TOKEN_KEY_EXPIRES)
+        self.assertIsNotNone(expires_at)
+        # Verify it's valid ISO8601
+        parsed = datetime.fromisoformat(expires_at)
+        self.assertIsNotNone(parsed.tzinfo)
+
+    def test_refresh_rotates_refresh_token(self) -> None:
+        """Refresh should store new refresh token when provided."""
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "old_refresh")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_access",
+            "refresh_token": "rotated_refresh",
+            "expires_in": 3600,
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        oauth.refresh_access_token()
+
+        self.assertEqual(
+            self.state_store.get_token(TwitchOAuth.TOKEN_KEY_REFRESH),
+            "rotated_refresh",
+        )
+
+    def test_refresh_preserves_refresh_token_if_omitted(self) -> None:
+        """Refresh should preserve old refresh token when response omits it."""
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "original_refresh")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_access",
+            "expires_in": 3600,
+            # No refresh_token in response
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        oauth.refresh_access_token()
+
+        # Original refresh token should be preserved
+        self.assertEqual(
+            self.state_store.get_token(TwitchOAuth.TOKEN_KEY_REFRESH),
+            "original_refresh",
+        )
+
+    def test_refresh_401_raises_reauth_error(self) -> None:
+        """Refresh 401 should raise error with auth-login message."""
+        from twitch_marker_agent.core.twitch_oauth import TokenRefreshError
+
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "expired_refresh")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        with self.assertRaises(TokenRefreshError) as ctx:
+            oauth.refresh_access_token()
+
+        self.assertIn("auth-login", str(ctx.exception))
+
+    def test_refresh_no_stored_token_raises(self) -> None:
+        """Refresh without stored token should raise with auth-login message."""
+        from twitch_marker_agent.core.twitch_oauth import TokenRefreshError
+
+        # No refresh token stored
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        with self.assertRaises(TokenRefreshError) as ctx:
+            oauth.refresh_access_token()
+
+        self.assertIn("auth-login", str(ctx.exception))
+
+    def test_refresh_sends_correct_payload(self) -> None:
+        """Refresh should POST with required fields: grant_type, refresh_token, client_id, client_secret."""
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "my_refresh_token")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_access",
+            "expires_in": 3600,
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        oauth.refresh_access_token()
+
+        # Verify POST was called with correct data= parameter
+        call_args = self.mock_session.post.call_args
+        sent_data = call_args.kwargs.get("data", {})
+
+        self.assertEqual(sent_data["grant_type"], "refresh_token")
+        self.assertEqual(sent_data["refresh_token"], "my_refresh_token")
+        self.assertEqual(sent_data["client_id"], "test_client_id")
+        self.assertEqual(sent_data["client_secret"], "test_client_secret")
+
+    def test_refresh_uses_correct_timeout(self) -> None:
+        """Refresh should use the expected timeout tuple (10, 30)."""
+        from twitch_marker_agent.core.twitch_oauth import HTTP_TIMEOUT
+
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "refresh_token")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_access",
+            "expires_in": 3600,
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        oauth.refresh_access_token()
+
+        # Verify timeout was passed correctly
+        call_args = self.mock_session.post.call_args
+        sent_timeout = call_args.kwargs.get("timeout")
+
+        self.assertEqual(sent_timeout, HTTP_TIMEOUT)
+        self.assertEqual(sent_timeout, (10, 30))
+
+
+class TestValidateAccessToken(unittest.TestCase):
+    """Tests for validate_access_token method."""
+
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = Path(self.temp_dir) / "test_state.db"
+        self.state_store = StateStore(self.db_path)
+
+        self.mock_config = MagicMock()
+        self.mock_logger = MagicMock()
+        self.mock_session = MagicMock()
+
+    def tearDown(self) -> None:
+        """Clean up test fixtures."""
+        import shutil
+        self.state_store.close()
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_validate_200_returns_dict(self) -> None:
+        """Validate 200 should return parsed JSON dict."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "client_id": "test_client",
+            "login": "testuser",
+            "user_id": "12345",
+            "expires_in": 3600,
+        }
+        self.mock_session.get.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        result = oauth.validate_access_token("some_token")
+
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["login"], "testuser")
+        self.assertEqual(result["expires_in"], 3600)
+
+    def test_validate_401_returns_none(self) -> None:
+        """Validate 401 should return None (no exception)."""
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        self.mock_session.get.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        result = oauth.validate_access_token("invalid_token")
+
+        self.assertIsNone(result)
+
+    def test_validate_uses_oauth_header(self) -> None:
+        """Validate should use OAuth authorization header."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {}
+        self.mock_session.get.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        oauth.validate_access_token("my_token")
+
+        call_args = self.mock_session.get.call_args
+        headers = call_args.kwargs.get("headers", {})
+        self.assertEqual(headers.get("Authorization"), "OAuth my_token")
+
+
+class TestGetValidUserAccessToken(unittest.TestCase):
+    """Tests for get_valid_user_access_token method."""
+
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = Path(self.temp_dir) / "test_state.db"
+        self.state_store = StateStore(self.db_path)
+
+        self.mock_config = MagicMock()
+        self.mock_config.client_id = "test_client_id"
+        self.mock_config.client_secret = "test_client_secret"
+
+        self.mock_logger = MagicMock()
+        self.mock_session = MagicMock()
+
+    def tearDown(self) -> None:
+        """Clean up test fixtures."""
+        import shutil
+        self.state_store.close()
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_returns_cached_when_fresh(self) -> None:
+        """Should return cached token when TTL > min_ttl_seconds."""
+        from datetime import timedelta
+
+        # Store token with expiry far in future
+        future = datetime.now(timezone.utc) + timedelta(hours=2)
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_ACCESS, "cached_token")
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_EXPIRES, future.isoformat())
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        result = oauth.get_valid_user_access_token(min_ttl_seconds=300)
+
+        # Should return cached, no HTTP call
+        self.assertEqual(result, "cached_token")
+        self.mock_session.post.assert_not_called()
+
+    def test_refreshes_when_near_expiry(self) -> None:
+        """Should refresh when TTL <= min_ttl_seconds."""
+        from datetime import timedelta
+
+        # Store token expiring in 60 seconds (less than default 300)
+        near_expiry = datetime.now(timezone.utc) + timedelta(seconds=60)
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_ACCESS, "old_token")
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "refresh_token")
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_EXPIRES, near_expiry.isoformat())
+
+        # Mock refresh response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "refreshed_token",
+            "expires_in": 3600,
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        result = oauth.get_valid_user_access_token(min_ttl_seconds=300)
+
+        self.assertEqual(result, "refreshed_token")
+        self.mock_session.post.assert_called_once()
+
+    def test_refreshes_when_expired(self) -> None:
+        """Should refresh when token is expired."""
+        from datetime import timedelta
+
+        # Store expired token
+        past = datetime.now(timezone.utc) - timedelta(hours=1)
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_ACCESS, "expired_token")
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "refresh_token")
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_EXPIRES, past.isoformat())
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_token",
+            "expires_in": 3600,
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        result = oauth.get_valid_user_access_token()
+
+        self.assertEqual(result, "new_token")
+        self.mock_session.post.assert_called_once()
+
+    def test_refreshes_when_expires_at_missing(self) -> None:
+        """Should refresh when expires_at is not stored."""
+        # Store token without expiry
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_ACCESS, "old_token")
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "refresh_token")
+        # No expires_at stored
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_token",
+            "expires_in": 3600,
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        result = oauth.get_valid_user_access_token()
+
+        self.assertEqual(result, "new_token")
+
+    def test_refreshes_when_expires_at_invalid(self) -> None:
+        """Should refresh when expires_at is invalid format."""
+        # Store token with invalid expiry
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_ACCESS, "old_token")
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "refresh_token")
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_EXPIRES, "not-a-date")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_token",
+            "expires_in": 3600,
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        # Should not crash, should refresh
+        result = oauth.get_valid_user_access_token()
+
+        self.assertEqual(result, "new_token")
+
+    def test_raises_when_not_authenticated(self) -> None:
+        """Should raise with auth-login message when no access token."""
+        from twitch_marker_agent.core.twitch_oauth import TokenRefreshError
+
+        # No tokens stored
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        with self.assertRaises(TokenRefreshError) as ctx:
+            oauth.get_valid_user_access_token()
+
+        self.assertIn("auth-login", str(ctx.exception))
+
+    def test_raises_when_no_refresh_token_and_refresh_needed(self) -> None:
+        """Should raise when refresh is needed but no refresh token exists."""
+        from datetime import timedelta
+        from twitch_marker_agent.core.twitch_oauth import TokenRefreshError
+
+        # Expired token but no refresh token
+        past = datetime.now(timezone.utc) - timedelta(hours=1)
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_ACCESS, "expired_token")
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_EXPIRES, past.isoformat())
+        # No refresh token stored
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        with self.assertRaises(TokenRefreshError) as ctx:
+            oauth.get_valid_user_access_token()
+
+        self.assertIn("auth-login", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
