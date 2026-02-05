@@ -9,7 +9,7 @@ Handles:
 - Token storage via StateStore abstraction
 
 Required OAuth scopes:
-- user:read:broadcast (required for Get Stream Markers)
+- channel:read:broadcast (required for Get Stream Markers)
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token"
 TWITCH_VALIDATE_URL = "https://id.twitch.tv/oauth2/validate"
 
 # Default scopes for marker access
-DEFAULT_SCOPES = ["user:read:broadcast"]
+DEFAULT_SCOPES = ["channel:read:broadcast"]
 
 # HTTP timeouts (connect, read) in seconds
 HTTP_TIMEOUT = (10, 30)

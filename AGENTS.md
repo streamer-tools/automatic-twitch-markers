@@ -70,10 +70,12 @@ During scaffold development, modules are implemented incrementally:
 - Retry utility (`retry.py`)
 - EventSub WebSocket (`eventsub_ws.py` - `connect`, `run_until_stopped`, message dispatch)
 - EventSub Subscriptions (`eventsub_subscriptions.py` - `ensure_stream_offline_subscription`, create/list/delete)
+- Helix Markers API (`markers_api.py` - `get_stream_markers`, `get_latest_video_id`)
+- Stream Offline Handler (`offline_handler.py` - `handle_stream_offline`, `should_handle_notification`)
+- CSV Export (`export_csv.py` - `export_markers_csv`)
 
 **Still Stubbed:**
-- Helix Markers API: `raise NotImplementedError("TODO: Implement Markers API")`
-- CSV/EDL exports: `raise NotImplementedError("TODO: Implement export")`
+- EDL exports: `raise NotImplementedError("TODO: Implement export")`
 - Agent orchestrator: `raise NotImplementedError("TODO: Implement agent runtime")`
 - Tray app: `raise NotImplementedError("TODO: Implement tray UI")`
 
@@ -135,8 +137,9 @@ python -c "from twitch_marker_agent.core import agent"
 | `twitch_oauth.py` | Browser OAuth + token refresh/validate |
 | `eventsub_ws.py` | EventSub WebSocket client (connect, message dispatch) |
 | `eventsub_subscriptions.py` | Helix EventSub subscription management (ensure, create, list, delete) |
-| `markers_api.py` | Helix Get Stream Markers (stub) |
-| `export_csv.py` | Twitch-style CSV export (stub) |
+| `markers_api.py` | Helix Get Stream Markers + Get Videos (latest VOD) |
+| `offline_handler.py` | Stream offline notification handling with retry/dedupe |
+| `export_csv.py` | Twitch-style CSV export |
 | `export_edl.py` | EDL export with timecode offset (stub) |
 | `agent.py` | Main orchestrator, coordinates all modules (stub) |
 

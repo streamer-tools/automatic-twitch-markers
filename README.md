@@ -8,7 +8,7 @@ This tool monitors your Twitch channel via EventSub WebSocket, detects when your
 
 ### Why This Tool?
 
-**Streamer.bot Limitation**: Streamer.bot cannot directly fetch stream markers because the Twitch API's "Get Stream Markers" endpoint requires a `user:read:broadcast` scope OAuth token from the broadcaster. Streamer.bot's built-in Twitch integration doesn't support this scope for marker retrieval.
+**Streamer.bot Limitation**: Streamer.bot cannot directly fetch stream markers because the Twitch API's "Get Stream Markers" endpoint requires a `channel:read:broadcast` scope OAuth token from the broadcaster. Streamer.bot's built-in Twitch integration doesn't support this scope for marker retrieval.
 
 This agent solves that by:
 1. Running a one-time OAuth flow to get the necessary scopes
@@ -109,25 +109,27 @@ Edit `config.json` in the project root:
 ### Required OAuth Scopes
 
 The agent will request these scopes during OAuth:
-- `user:read:broadcast` - Required to read stream markers
+- `channel:read:broadcast` - Required to read stream markers
 
 ## Project Structure
 
 ```
 src/twitch_marker_agent/
-├── app.py              # Tray app entrypoint (stub)
-├── cli.py              # CLI entrypoint (auth-login implemented)
-└── core/               # Framework-agnostic core logic
-    ├── agent.py        # Main orchestrator (stub)
-    ├── config.py       # Configuration loading/validation
-    ├── eventsub_ws.py  # EventSub WebSocket client
-    ├── export_csv.py   # CSV export (Twitch-style, stub)
-    ├── export_edl.py   # EDL export for editors (stub)
-    ├── logging_setup.py# Logging configuration
-    ├── markers_api.py  # Helix Get Stream Markers (stub)
-    ├── retry.py        # Exponential backoff utility
-    ├── state_store.py  # SQLite state + token storage
-    └── twitch_oauth.py # OAuth login/refresh/validate
+├── app.py                 # Tray app entrypoint (stub)
+├── cli.py                 # CLI entrypoint (auth-login implemented)
+└── core/                  # Framework-agnostic core logic
+    ├── agent.py           # Main orchestrator (stub)
+    ├── config.py          # Configuration loading/validation
+    ├── eventsub_ws.py     # EventSub WebSocket client
+    ├── eventsub_subscriptions.py # Helix subscription management
+    ├── export_csv.py      # CSV export (Twitch-style, implemented)
+    ├── export_edl.py      # EDL export for editors (stub)
+    ├── logging_setup.py   # Logging configuration
+    ├── markers_api.py     # Helix Get Stream Markers (implemented)
+    ├── offline_handler.py # Stream offline notification handler
+    ├── retry.py           # Exponential backoff utility
+    ├── state_store.py     # SQLite state + token storage
+    └── twitch_oauth.py    # OAuth login/refresh/validate
 ```
 
 ## Next Implementation Steps
@@ -136,14 +138,65 @@ src/twitch_marker_agent/
 2. [x] Implement token refresh logic
 3. [x] Connect EventSub WebSocket in `eventsub_ws.py`
 4. [x] Handle `session_welcome` and create subscription (Helix API)
-5. [ ] Implement `stream.offline` event handler
-6. [ ] Implement Helix Get Stream Markers API call
-7. [ ] Implement CSV export (Twitch format)
+5. [x] Implement `stream.offline` event handler
+6. [x] Implement Helix Get Stream Markers API call
+7. [x] Implement CSV export (Twitch format)
 8. [ ] Implement EDL export with timecode offset
 9. [ ] Build tray app UI with pystray
 10. [ ] Add Windows startup integration
 
+## Export Formats
+
+See [docs/export_formats.md](docs/export_formats.md) for detailed format specifications.
+
+| Format | Status | Description |
+|--------|--------|-------------|
+| Twitch CSV | ✅ Implemented | Canonical format, compatible with CSV→EDL converters |
+| Resolve EDL | ⏳ Planned | CMX 3600 format with configurable offset |
+
+## Tray App Roadmap
+
+The Windows tray app (planned, not yet implemented) will provide:
+
+### Manual Fetch Action
+
+**"Fetch Latest Stream Markers (Now)"**
+- Runs the same fetch + export pipeline as the automatic `stream.offline` trigger
+- Writes output to the same folder with the same naming conventions
+- Useful for testing or fetching markers before stream ends
+
+### Output Format Dropdown
+
+The tray will include a runtime format selector:
+- **Twitch CSV** (always available)
+- **Resolve EDL** (shown when EDL export is implemented)
+
+This acts as a runtime override for manual fetches only:
+- Does not modify `config.json`
+- Selection may be persisted via StateStore keys in a future version
+
+### Output Folder Picker
+
+The tray will include a folder picker to set the export destination:
+- Browse button opens native folder picker dialog
+- Selection persisted via StateStore (no need to edit config.json manually)
+- Default falls back to `output_dir` from config.json
+
 ## Changelog
+
+### v0.3.2 (2026-02-04)
+- **Stream Offline Handler & Markers API:**
+  - New module: `offline_handler.py`
+  - `handle_stream_offline()` - fetch markers with retry, export to CSV
+  - `should_handle_notification()` - filter/dedupe notifications
+  - Two-layer dedupe: in-memory message_id + StateStore video_id
+  - Retry with exponential backoff for 404/429 (VOD not ready)
+  - Exceptions: `MarkersFetchError`, `MarkersAuthError`, `MarkersNotFoundError`, `MarkersRateLimitError`
+- **Markers API (`markers_api.py`):**
+  - `get_stream_markers()` - GET /helix/streams/markers
+  - `get_latest_video_id()` - GET /helix/videos (most recent VOD)
+- **OAuth scope fix:** Changed from `user:read:broadcast` to `channel:read:broadcast`
+- Comprehensive tests: 33 new tests (166 total)
 
 ### v0.3.1 (2026-02-04)
 - **Helix EventSub Subscription Management:**
