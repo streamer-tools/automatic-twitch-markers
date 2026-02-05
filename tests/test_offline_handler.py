@@ -447,5 +447,129 @@ class TestHelperFunctions(unittest.TestCase):
         self.assertEqual(result, "12345")
 
 
+# =============================================================================
+# Tests for EDL Offset Wiring
+# =============================================================================
+
+
+class TestEdlOffsetWiring(unittest.TestCase):
+    """Tests for resolve_offset_enabled + resolve_offset_timecode wiring."""
+
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.logger = MagicMock(spec=logging.Logger)
+        self.http_client = MagicMock()
+        self.state_store = MagicMock()
+        self.state_store.get_state.return_value = None
+        self.broadcaster_id = "12345"
+
+    def _make_config(self, offset_enabled: bool, offset_timecode: str) -> MagicMock:
+        """Create mock config with specific offset settings."""
+        config = MagicMock()
+        config.client_id = "test_client_id"
+        config.output_dir = Path(tempfile.gettempdir()) / "test_markers_edl"
+        config.export_formats = ("edl",)  # EDL only
+        config.timecode_fps = 24
+        config.resolve_offset_enabled = offset_enabled
+        config.resolve_offset_timecode = offset_timecode
+        return config
+
+    @patch("twitch_marker_agent.core.offline_handler.get_latest_video_id")
+    @patch("twitch_marker_agent.core.offline_handler.get_stream_markers")
+    @patch("twitch_marker_agent.core.offline_handler.export_markers_edl")
+    def test_offset_disabled_passes_zero(
+        self,
+        mock_export: MagicMock,
+        mock_markers: MagicMock,
+        mock_video: MagicMock,
+    ) -> None:
+        """When resolve_offset_enabled=False, should pass timecode_offset_seconds=0."""
+        mock_video.return_value = "vid_123"
+        mock_markers.return_value = [MarkerVideo("vid_123", make_markers())]
+        mock_export.return_value = Path("/tmp/markers.edl")
+
+        config = self._make_config(offset_enabled=False, offset_timecode="01:00:00:00")
+
+        handle_stream_offline(
+            http_client=self.http_client,
+            config=config,
+            access_token="token",
+            broadcaster_id=self.broadcaster_id,
+            state_store=self.state_store,
+            logger=self.logger,
+            max_attempts=1,
+        )
+
+        mock_export.assert_called_once()
+        call_kwargs = mock_export.call_args.kwargs
+        self.assertEqual(call_kwargs["timecode_offset_seconds"], 0)
+
+    @patch("twitch_marker_agent.core.offline_handler.get_latest_video_id")
+    @patch("twitch_marker_agent.core.offline_handler.get_stream_markers")
+    @patch("twitch_marker_agent.core.offline_handler.export_markers_edl")
+    def test_offset_enabled_parses_timecode(
+        self,
+        mock_export: MagicMock,
+        mock_markers: MagicMock,
+        mock_video: MagicMock,
+    ) -> None:
+        """When resolve_offset_enabled=True, should parse and pass timecode as seconds."""
+        mock_video.return_value = "vid_123"
+        mock_markers.return_value = [MarkerVideo("vid_123", make_markers())]
+        mock_export.return_value = Path("/tmp/markers.edl")
+
+        config = self._make_config(offset_enabled=True, offset_timecode="01:00:00:00")
+
+        handle_stream_offline(
+            http_client=self.http_client,
+            config=config,
+            access_token="token",
+            broadcaster_id=self.broadcaster_id,
+            state_store=self.state_store,
+            logger=self.logger,
+            max_attempts=1,
+        )
+
+        mock_export.assert_called_once()
+        call_kwargs = mock_export.call_args.kwargs
+        self.assertEqual(call_kwargs["timecode_offset_seconds"], 3600)
+
+    @patch("twitch_marker_agent.core.offline_handler.get_latest_video_id")
+    @patch("twitch_marker_agent.core.offline_handler.get_stream_markers")
+    @patch("twitch_marker_agent.core.offline_handler.export_markers_edl")
+    def test_invalid_timecode_falls_back_to_default(
+        self,
+        mock_export: MagicMock,
+        mock_markers: MagicMock,
+        mock_video: MagicMock,
+    ) -> None:
+        """When resolve_offset_timecode is invalid, should fall back to 3600."""
+        mock_video.return_value = "vid_123"
+        mock_markers.return_value = [MarkerVideo("vid_123", make_markers())]
+        mock_export.return_value = Path("/tmp/markers.edl")
+
+        config = self._make_config(offset_enabled=True, offset_timecode="invalid")
+
+        handle_stream_offline(
+            http_client=self.http_client,
+            config=config,
+            access_token="token",
+            broadcaster_id=self.broadcaster_id,
+            state_store=self.state_store,
+            logger=self.logger,
+            max_attempts=1,
+        )
+
+        # Should fall back to default 3600
+        mock_export.assert_called_once()
+        call_kwargs = mock_export.call_args.kwargs
+        self.assertEqual(call_kwargs["timecode_offset_seconds"], 3600)
+
+        # Should log a warning
+        self.logger.warning.assert_called()
+        warning_call = self.logger.warning.call_args
+        self.assertIn("Invalid", warning_call[0][0])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -78,9 +78,9 @@ The canonical CSV format matches Twitch Highlighter-style output for compatibili
 
 ---
 
-## DaVinci Resolve EDL (Planned)
+## DaVinci Resolve EDL
 
-**Status:** ⏳ Pending Implementation
+**Status:** ✅ Implemented (`export_edl.py`)
 
 EDL (Edit Decision List) export for DaVinci Resolve-compatible marker import.
 
@@ -121,11 +121,14 @@ FCM: NON-DROP FRAME
 
 ### Configuration
 
-| Setting | Description |
-|---------|-------------|
-| `resolve_offset_enabled` | Enable/disable offset |
-| `resolve_offset_timecode` | Offset in HH:MM:SS:FF format |
-| `timecode_fps` | Frame rate (24, 30, etc.) |
+| Setting | Description | Behavior |
+|---------|-------------|----------|
+| `resolve_offset_enabled` | Enable/disable offset | `false` → 0s, `true` → parse timecode |
+| `resolve_offset_timecode` | Offset in HH:MM:SS:FF format | Must have FF=00 |
+| `timecode_fps` | Frame rate (24, 30, etc.) | Used for documentation |
+
+> [!NOTE]
+> If `resolve_offset_enabled` is true but `resolve_offset_timecode` is invalid, the offset falls back to 3600 seconds (1 hour) with a warning logged.
 
 ---
 
