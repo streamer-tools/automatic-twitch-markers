@@ -80,10 +80,15 @@ auto-twitch-markers
 python -m twitch_marker_agent.cli
 ```
 
-**Tray app** (future):
+**Tray app** (system tray with manual fetch):
 ```powershell
 python -m twitch_marker_agent.app
 ```
+
+The tray app provides:
+- **Fetch Latest Markers (Now)** - manually fetch and export markers
+- **Output Format** - toggle CSV/EDL export formats
+- **Output Folder** - open or change export directory
 
 ## Configuration
 
@@ -123,13 +128,14 @@ src/twitch_marker_agent/
     ├── eventsub_ws.py     # EventSub WebSocket client
     ├── eventsub_subscriptions.py # Helix subscription management
     ├── export_csv.py      # CSV export (Twitch-style, implemented)
-    ├── export_edl.py      # EDL export for editors (stub)
+    ├── export_edl.py      # EDL export for editors (implemented)
     ├── logging_setup.py   # Logging configuration
     ├── markers_api.py     # Helix Get Stream Markers (implemented)
     ├── offline_handler.py # Stream offline notification handler
     ├── retry.py           # Exponential backoff utility
     ├── state_store.py     # SQLite state + token storage
-    └── twitch_oauth.py    # OAuth login/refresh/validate
+    ├── twitch_oauth.py    # OAuth login/refresh/validate
+    └── agent_runner.py    # Async EventSub agent orchestrator
 ```
 
 ## Next Implementation Steps
@@ -142,7 +148,7 @@ src/twitch_marker_agent/
 6. [x] Implement Helix Get Stream Markers API call
 7. [x] Implement CSV export (Twitch format)
 8. [x] Implement EDL export with timecode offset
-9. [ ] Build tray app UI with pystray
+9. [x] Build tray app UI with pystray (v0.3.4)
 10. [ ] Add Windows startup integration
 
 ## Export Formats
@@ -154,13 +160,21 @@ See [docs/export_formats.md](docs/export_formats.md) for detailed format specifi
 | Twitch CSV | ✅ Implemented | Canonical 4-column format, compatible with CSV→EDL converters |
 | Resolve EDL | ✅ Implemented | CMX 3600 format with marker metadata and configurable offset |
 
-## Tray App Roadmap
+## Tray App
 
-The Windows tray app (planned, not yet implemented) will provide:
+The Windows tray app provides automatic and manual marker export:
+
+### Auto Mode
+
+**Start/Stop Auto Mode** monitors your channel via EventSub:
+- Connects to Twitch EventSub WebSocket
+- Listens for `stream.offline` events
+- Automatically exports markers when streams end
+- Runs in background without blocking UI
 
 ### Manual Fetch Action
 
-**"Fetch Latest Stream Markers (Now)"**
+**"Fetch Latest Markers (Now)"**
 - Runs the same fetch + export pipeline as the automatic `stream.offline` trigger
 - Writes output to the same folder with the same naming conventions
 - Useful for testing or fetching markers before stream ends
@@ -197,6 +211,23 @@ The tray will include a folder picker to set the export destination:
   - `get_latest_video_id()` - GET /helix/videos (most recent VOD)
 - **OAuth scope fix:** Changed from `user:read:broadcast` to `channel:read:broadcast`
 - Comprehensive tests: 33 new tests (166 total)
+
+### v0.3.4 (2026-02-04)
+- **Tray App UI (`app.py`):**
+  - Windows system tray application with pystray
+  - Manual fetch action: "Fetch Latest Markers (Now)"
+  - Output format toggles (CSV/EDL) for runtime override
+  - Output folder picker with persistence via StateStore
+  - Threaded fetch keeps UI responsive
+- **Tray Controller (`tray_controller.py`):**
+  - UI-agnostic pure functions for testability
+  - `resolve_output_dir()` - StateStore or config fallback
+  - `set_output_dir()` - persist user selection
+  - `get_manual_fetch_formats()` - format selection with CSV enforcement
+  - `run_manual_fetch()` - token → markers → export pipeline
+- **StateStore additions:**
+  - `get_state()`/`set_state()` for generic key-value persistence
+- Comprehensive tests: 13 new tests (252 total)
 
 ### v0.3.3 (2026-02-04)
 - **EDL Export (`export_edl.py`):**

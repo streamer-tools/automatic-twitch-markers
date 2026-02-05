@@ -27,8 +27,10 @@ class StateStore:
     - Tracking processed stream/VOD IDs
     - Storing and retrieving OAuth tokens
 
-    Thread-safety: This class is NOT thread-safe. Create separate
-    instances for each thread, or implement external locking.
+    Thread-safety: Each operation opens and closes its own connection,
+    making individual reads/writes safe for concurrent access at the
+    SQLite level. However, multi-step transactions (read-modify-write)
+    are NOT atomic across threads. For such cases, use external locking.
     """
 
     def __init__(self, db_path: str | Path) -> None:
@@ -221,6 +223,39 @@ class StateStore:
             )
             conn.commit()
             return cursor.rowcount > 0
+
+    # -------------------------------------------------------------------------
+    # Generic State API (for non-token key-value persistence)
+    # -------------------------------------------------------------------------
+
+    def get_state(self, key: str) -> str | None:
+        """
+        Retrieve a stored state value.
+
+        This is a generic key-value store for non-token data like
+        user preferences (e.g., tray output directory).
+
+        Args:
+            key: State identifier (e.g., "tray.output_dir").
+
+        Returns:
+            State value if found, None otherwise.
+        """
+        # Reuse token storage table for simplicity
+        return self.get_token(key)
+
+    def set_state(self, key: str, value: str) -> None:
+        """
+        Store a state value.
+
+        This is a generic key-value store for non-token data.
+
+        Args:
+            key: State identifier.
+            value: Value to store (must be string).
+        """
+        # Reuse token storage table for simplicity
+        self.store_token(key, value)
 
     # -------------------------------------------------------------------------
     # Lifecycle
