@@ -74,10 +74,14 @@ During scaffold development, modules are implemented incrementally:
 - Stream Offline Handler (`offline_handler.py` - `handle_stream_offline`, `should_handle_notification`)
 - CSV Export (`export_csv.py` - `export_markers_csv`)
 - EDL Export (`export_edl.py` - `export_markers_edl`, `timecode_to_seconds`, config-driven offset)
+- Tray App UI (`app.py` - `run_tray_app`, manual fetch, format toggles, folder picker, auto mode start/stop)
+- Tray Controller (`tray_controller.py` - `resolve_output_dir`, `set_output_dir`, `run_manual_fetch`, `start_auto_mode`, `stop_auto_mode`)
+- Agent Runner (`agent_runner.py` - async EventSub orchestrator with connect/subscribe/dispatch)
 
 **Still Stubbed:**
-- Agent orchestrator: `raise NotImplementedError("TODO: Implement agent runtime")`
-- Tray app: `raise NotImplementedError("TODO: Implement tray UI")`
+- Legacy orchestrator (`core/agent.py`): Superseded by `agent_runner.py`
+
+**Architecture Invariant:** `core/*` must not import pystray or any UI libraries. Tray UI code lives in `app.py` only.
 
 ### Code Standards
 
