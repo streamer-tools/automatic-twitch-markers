@@ -18,6 +18,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from twitch_marker_agent.core.export_csv import export_markers_csv
+from twitch_marker_agent.core.export_edl import (
+    DEFAULT_OFFSET_SECONDS,
+    export_markers_edl,
+    timecode_to_seconds,
+)
 from twitch_marker_agent.core.markers_api import (
     MarkersFetchError,
     MarkersAuthError,
@@ -276,10 +281,28 @@ def handle_stream_offline(
         )
         export_paths.append(csv_path)
 
-    # EDL export would go here (not implemented in scope)
-    # if "edl" in config.export_formats:
-    #     edl_path = export_markers_edl(...)
-    #     export_paths.append(edl_path)
+    # EDL export
+    if "edl" in config.export_formats:
+        # Compute offset from config
+        edl_offset_seconds = 0
+        if config.resolve_offset_enabled:
+            try:
+                edl_offset_seconds = timecode_to_seconds(config.resolve_offset_timecode)
+            except (ValueError, AttributeError):
+                logger.warning(
+                    "Invalid resolve_offset_timecode, falling back to default offset"
+                )
+                edl_offset_seconds = DEFAULT_OFFSET_SECONDS
+
+        edl_path = export_markers_edl(
+            markers=all_markers,
+            output_path=config.output_dir,
+            config=config,
+            video_id=video_id,
+            timecode_offset_seconds=edl_offset_seconds,
+            logger=logger,
+        )
+        export_paths.append(edl_path)
 
     # Step 5: Mark as processed
     from datetime import datetime, timezone

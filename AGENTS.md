@@ -73,9 +73,9 @@ During scaffold development, modules are implemented incrementally:
 - Helix Markers API (`markers_api.py` - `get_stream_markers`, `get_latest_video_id`)
 - Stream Offline Handler (`offline_handler.py` - `handle_stream_offline`, `should_handle_notification`)
 - CSV Export (`export_csv.py` - `export_markers_csv`)
+- EDL Export (`export_edl.py` - `export_markers_edl`, `timecode_to_seconds`, config-driven offset)
 
 **Still Stubbed:**
-- EDL exports: `raise NotImplementedError("TODO: Implement export")`
 - Agent orchestrator: `raise NotImplementedError("TODO: Implement agent runtime")`
 - Tray app: `raise NotImplementedError("TODO: Implement tray UI")`
 

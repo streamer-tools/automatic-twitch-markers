@@ -141,7 +141,7 @@ src/twitch_marker_agent/
 5. [x] Implement `stream.offline` event handler
 6. [x] Implement Helix Get Stream Markers API call
 7. [x] Implement CSV export (Twitch format)
-8. [ ] Implement EDL export with timecode offset
+8. [x] Implement EDL export with timecode offset
 9. [ ] Build tray app UI with pystray
 10. [ ] Add Windows startup integration
 
@@ -151,8 +151,8 @@ See [docs/export_formats.md](docs/export_formats.md) for detailed format specifi
 
 | Format | Status | Description |
 |--------|--------|-------------|
-| Twitch CSV | ✅ Implemented | Canonical format, compatible with CSV→EDL converters |
-| Resolve EDL | ⏳ Planned | CMX 3600 format with configurable offset |
+| Twitch CSV | ✅ Implemented | Canonical 4-column format, compatible with CSV→EDL converters |
+| Resolve EDL | ✅ Implemented | CMX 3600 format with marker metadata and configurable offset |
 
 ## Tray App Roadmap
 
@@ -197,6 +197,25 @@ The tray will include a folder picker to set the export destination:
   - `get_latest_video_id()` - GET /helix/videos (most recent VOD)
 - **OAuth scope fix:** Changed from `user:read:broadcast` to `channel:read:broadcast`
 - Comprehensive tests: 33 new tests (166 total)
+
+### v0.3.3 (2026-02-04)
+- **EDL Export (`export_edl.py`):**
+  - DaVinci Resolve compatible format with marker metadata lines
+  - Event format: `{idx:03}  001      V     C        {startTC} {endTC}`
+  - Metadata format: `|C:ResolveColorBlue |M:{desc} by {user} [{type}] |D:1`
+  - Marker duration: 1 frame (start :00, end :01)
+  - Default offset: +3600 seconds (01:00:00:00) for Resolve timeline
+  - Added `timecode_to_seconds()` helper for config parsing
+- **Config-driven EDL offset wiring:**
+  - `resolve_offset_enabled: false` → offset = 0 (raw timecodes)
+  - `resolve_offset_enabled: true` → offset parsed from `resolve_offset_timecode`
+  - Invalid timecode falls back to 3600s with warning
+- **CSV Export aligned to canonical 4-column format:**
+  - Columns: Timestamp, User Type, Username, Marker Title
+  - File naming: `{YYYY-MM-DD} {Title} - Twitch Markers.csv` with fallback
+  - Added `user_type`, `username` fields to Marker dataclass
+- **Offline handler** now exports both CSV and EDL when configured
+- Comprehensive tests: 73 new tests (239 total)
 
 ### v0.3.1 (2026-02-04)
 - **Helix EventSub Subscription Management:**
