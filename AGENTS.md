@@ -47,7 +47,7 @@ If a secret is ever committed by mistake:
    ```
    Entry points (app.py, cli.py, integrations/*)
          ↓
-   core/agent.py (orchestrator)
+   core/agent_runner.py (async orchestrator for tray Auto Mode)
          ↓
    core/* modules (config, state_store, twitch_oauth, etc.)
    ```
@@ -119,8 +119,8 @@ python -c "from twitch_marker_agent.core import agent"
 └─────────────────┬───────────────────────────────┘
                   ▼
 ┌─────────────────────────────────────────────────┐
-│              core/agent.py                      │
-│  Orchestrates: OAuth → EventSub → Export        │
+│           core/agent_runner.py                  │
+│  Async orchestrator: OAuth → EventSub → Export  │
 └─────────────────┬───────────────────────────────┘
                   ▼
 ┌─────────────────────────────────────────────────┐
@@ -144,8 +144,9 @@ python -c "from twitch_marker_agent.core import agent"
 | `markers_api.py` | Helix Get Stream Markers + Get Videos (latest VOD) |
 | `offline_handler.py` | Stream offline notification handling with retry/dedupe |
 | `export_csv.py` | Twitch-style CSV export |
-| `export_edl.py` | EDL export with timecode offset (stub) |
-| `agent.py` | Main orchestrator, coordinates all modules (stub) |
+| `export_edl.py` | EDL export with timecode offset |
+| `agent_runner.py` | Async EventSub orchestrator (tray Auto Mode) |
+| `agent.py` | Legacy orchestrator stub (superseded by agent_runner) |
 
 ## Runtime Artifacts (Local Only)
 

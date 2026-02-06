@@ -140,17 +140,23 @@ def create_tray_menu(
         return not state.is_fetching
 
     def get_auto_status(_: pystray.MenuItem) -> str:
-        if auto_state.is_running:
+        # Derive running state from actual thread status
+        thread_alive = (
+            auto_state.thread is not None and auto_state.thread.is_alive()
+        )
+        if thread_alive:
             return "Auto: Running"
         if auto_state.last_error:
-            return f"Auto: Error"
+            return "Auto: Error"
         return "Auto: Stopped"
 
     def is_auto_stopped(_: pystray.MenuItem) -> bool:
-        return not auto_state.is_running
+        # Stopped if no thread or thread is dead
+        return auto_state.thread is None or not auto_state.thread.is_alive()
 
     def is_auto_running(_: pystray.MenuItem) -> bool:
-        return auto_state.is_running
+        # Running only if thread exists and is alive
+        return auto_state.thread is not None and auto_state.thread.is_alive()
 
     return pystray.Menu(
         # Auto mode section
