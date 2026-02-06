@@ -100,6 +100,10 @@ class AgentRunner:
         self._connected_at: datetime | None = None
         self._stop_event: asyncio.Event | None = None
         self._seen_message_ids: set[str] = set()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+        # Track if client was injected (don't reset injected clients)
+        self._client_injected = eventsub_client is not None
 
         # Notification queue for EventSub messages
         self._notification_queue: asyncio.Queue["EventSubMessage"] | None = None
@@ -167,6 +171,25 @@ class AgentRunner:
 
         return handle_stream_offline
 
+    def _reset_state(self) -> None:
+        """
+        Reset per-run state for restart reliability.
+
+        Called at start of run_async() to ensure clean state
+        for subsequent runs after Stop -> Start.
+        """
+        self._stop_event = None
+        self._loop = None
+        self._seen_message_ids.clear()
+        self._session_id = None
+        self._connected_at = None
+        self._last_error = None
+
+        # Only reset client and queue if not injected (for testing)
+        if not self._client_injected:
+            self._eventsub_client = None
+            self._notification_queue = None
+
     async def run_async(self) -> None:
         """
         Main async entrypoint. Blocks until stopped.
@@ -189,9 +212,13 @@ class AgentRunner:
         )
 
         self._logger.info("AgentRunner starting")
+
+        # Reset state for restart reliability
+        self._reset_state()
+
         self._is_running = True
-        self._last_error = None
         self._stop_event = asyncio.Event()
+        self._loop = asyncio.get_running_loop()
 
         try:
             # Get client
@@ -290,6 +317,7 @@ class AgentRunner:
 
         finally:
             self._is_running = False
+            self._loop = None  # Clear loop reference
             self._logger.info("AgentRunner stopped")
 
             # Clean up client
@@ -424,15 +452,15 @@ class AgentRunner:
         """
         self._logger.info("Stop requested for AgentRunner")
 
-        # Set stop event (if loop is running)
-        if self._stop_event:
-            # Schedule in event loop if running
+        # Set stop event using stored loop (thread-safe)
+        if self._stop_event and self._loop:
             try:
-                loop = asyncio.get_running_loop()
-                loop.call_soon_threadsafe(self._stop_event.set)
+                self._loop.call_soon_threadsafe(self._stop_event.set)
             except RuntimeError:
-                # No running loop, set directly
-                pass
+                # Loop closed or not running
+                self._logger.debug("Could not signal stop event, loop unavailable")
+        elif not self._loop:
+            self._logger.debug("No stored loop, stop event not signaled")
 
         # Stop EventSub client
         if self._eventsub_client:

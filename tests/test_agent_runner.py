@@ -515,5 +515,96 @@ class TestAgentRunnerNoSecrets(unittest.TestCase):
                 self.assertNotIn("super_secret_value", all_args)
 
 
+class TestAgentRunnerStopSignaling(unittest.TestCase):
+    """Test thread-safe stop signaling."""
+
+    def test_request_stop_uses_stored_loop(self) -> None:
+        """Should use stored loop to call_soon_threadsafe the stop event."""
+        from twitch_marker_agent.core.agent_runner import AgentRunner
+
+        config = make_mock_config()
+        logger = MagicMock(spec=logging.Logger)
+
+        runner = AgentRunner(
+            config=config,
+            state_store=MagicMock(),
+            http_client=MagicMock(),
+            oauth=MagicMock(),
+            logger=logger,
+        )
+
+        # Simulate state as if run_async() had started
+        mock_loop = MagicMock()
+        mock_stop_event = MagicMock()
+        runner._loop = mock_loop
+        runner._stop_event = mock_stop_event
+
+        # Call request_stop from "tray thread"
+        runner.request_stop()
+
+        # Assert call_soon_threadsafe was called with stop_event.set
+        mock_loop.call_soon_threadsafe.assert_called_once_with(
+            mock_stop_event.set
+        )
+
+
+class TestAgentRunnerRestartReliability(unittest.TestCase):
+    """Test restart reliability via _reset_state()."""
+
+    def test_restart_resets_state(self) -> None:
+        """Should reset per-run state at start of run_async()."""
+        from twitch_marker_agent.core.agent_runner import AgentRunner
+
+        config = make_mock_config()
+        oauth = MagicMock()
+        oauth.get_valid_user_access_token.return_value = "test_token"
+        logger = MagicMock(spec=logging.Logger)
+
+        # Create a mock eventsub client for run
+        async def slow_run() -> None:
+            await asyncio.sleep(10)
+
+        mock_client = MagicMock()
+        mock_client.connect = AsyncMock(return_value="new_session")
+        mock_client.run_until_stopped = AsyncMock(side_effect=slow_run)
+        mock_client.stop = MagicMock()
+        mock_client.close = AsyncMock()
+
+        # Create runner with mocked dependencies
+        runner = AgentRunner(
+            config=config,
+            state_store=MagicMock(),
+            http_client=MagicMock(),
+            oauth=oauth,
+            logger=logger,
+            eventsub_client=mock_client,
+            ensure_subscription_fn=MagicMock(),  # Mock to avoid real call
+        )
+
+        # Simulate state after a previous run
+        runner._seen_message_ids.add("old_msg_123")
+        runner._session_id = "old_session"
+        runner._last_error = "previous error"
+
+        async def run_test() -> None:
+            task = asyncio.create_task(runner.run_async())
+            await asyncio.sleep(0.1)
+
+            # Verify state was reset (seen_message_ids cleared, loop set)
+            self.assertEqual(len(runner._seen_message_ids), 0)
+            self.assertIsNotNone(runner._loop)
+            self.assertIsNotNone(runner._stop_event)
+
+            runner.request_stop()
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(run_test())
+
+
 if __name__ == "__main__":
     unittest.main()
+

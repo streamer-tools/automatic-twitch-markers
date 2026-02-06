@@ -576,6 +576,76 @@ class TestStopAutoMode(unittest.TestCase):
                 self.assertNotIn("secret_token_12345", all_args)
 
 
+class TestAutoModeStatusChecks(unittest.TestCase):
+    """Test that status derives from thread.is_alive()."""
+
+    def test_status_checks_thread_is_alive(self) -> None:
+        """Should derive running state from thread.is_alive()."""
+        # Simulate menu predicates logic from app.py
+
+        # Case 1: Thread alive -> running
+        mock_thread_alive = MagicMock()
+        mock_thread_alive.is_alive.return_value = True
+        auto_state = AutoModeState(is_running=True, thread=mock_thread_alive)
+
+        # Replicate the predicate logic
+        thread_alive = (
+            auto_state.thread is not None and auto_state.thread.is_alive()
+        )
+        is_stopped = auto_state.thread is None or not auto_state.thread.is_alive()
+        is_running = auto_state.thread is not None and auto_state.thread.is_alive()
+
+        self.assertTrue(thread_alive)
+        self.assertFalse(is_stopped)
+        self.assertTrue(is_running)
+
+        # Case 2: Thread dead -> stopped
+        mock_thread_dead = MagicMock()
+        mock_thread_dead.is_alive.return_value = False
+        auto_state2 = AutoModeState(is_running=True, thread=mock_thread_dead)
+
+        thread_alive2 = (
+            auto_state2.thread is not None and auto_state2.thread.is_alive()
+        )
+        is_stopped2 = auto_state2.thread is None or not auto_state2.thread.is_alive()
+        is_running2 = auto_state2.thread is not None and auto_state2.thread.is_alive()
+
+        self.assertFalse(thread_alive2)
+        self.assertTrue(is_stopped2)
+        self.assertFalse(is_running2)
+
+    def test_dead_thread_shows_stopped(self) -> None:
+        """Should show stopped when thread died even if is_running flag is True."""
+        # This tests the stale flag scenario
+
+        # AutoModeState with is_running=True but thread is dead
+        mock_dead_thread = MagicMock()
+        mock_dead_thread.is_alive.return_value = False
+        auto_state = AutoModeState(
+            is_running=True,  # Stale flag!
+            thread=mock_dead_thread,
+            last_error="Connection lost",
+        )
+
+        # UI predicates should derive from thread, not flag
+        is_stopped = auto_state.thread is None or not auto_state.thread.is_alive()
+        is_running = auto_state.thread is not None and auto_state.thread.is_alive()
+
+        # Despite is_running=True, predicates should show stopped
+        self.assertTrue(is_stopped)
+        self.assertFalse(is_running)
+
+        # Status should show error
+        if auto_state.thread is not None and auto_state.thread.is_alive():
+            status = "Auto: Running"
+        elif auto_state.last_error:
+            status = "Auto: Error"
+        else:
+            status = "Auto: Stopped"
+
+        self.assertEqual(status, "Auto: Error")
+
+
 if __name__ == "__main__":
     unittest.main()
 

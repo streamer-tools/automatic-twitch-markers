@@ -123,7 +123,8 @@ src/twitch_marker_agent/
 ├── app.py                 # Tray app entrypoint (stub)
 ├── cli.py                 # CLI entrypoint (auth-login implemented)
 └── core/                  # Framework-agnostic core logic
-    ├── agent.py           # Main orchestrator (stub)
+    ├── agent.py           # Legacy orchestrator (stub, superseded)
+    ├── agent_runner.py    # Async EventSub agent orchestrator (active)
     ├── config.py          # Configuration loading/validation
     ├── eventsub_ws.py     # EventSub WebSocket client
     ├── eventsub_subscriptions.py # Helix subscription management
