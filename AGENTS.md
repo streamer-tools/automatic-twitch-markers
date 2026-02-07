@@ -24,7 +24,7 @@ Never commit secrets or sensitive runtime artifacts to git.
 **How we handle secrets:**
 - Commit `config.json` with safe placeholders only (no real secrets).
 - Put real secrets in one of:
-  - `config.local.json` (gitignored), OR
+  - `local.config.json` (gitignored), OR
   - Environment variables (preferred for SaaS / CI later).
 
 If a secret is ever committed by mistake:
@@ -147,6 +147,12 @@ python -c "from twitch_marker_agent.core import agent"
 | `export_edl.py` | EDL export with timecode offset |
 | `agent_runner.py` | Async EventSub orchestrator (tray Auto Mode) |
 | `agent.py` | Legacy orchestrator stub (superseded by agent_runner) |
+
+### Platform-Specific Modules
+
+| File | Purpose |
+|------|---------|
+| `platform/windows_startup.py` | Windows startup registry integration (HKCU Run key) |
 
 ## Runtime Artifacts (Local Only)
 

@@ -5,9 +5,11 @@ This module provides the Windows system tray interface using pystray.
 The tray app runs in the background and provides manual marker export.
 
 UI Features:
+- Auto Mode: automatic marker export on stream end
 - Manual fetch action: "Fetch Latest Markers (Now)"
 - Output format toggles (CSV/EDL) for manual fetch
 - Output folder picker with persistence
+- Windows startup toggle
 - Exit action
 """
 
@@ -102,6 +104,33 @@ def _create_format_toggle(
     )
 
 
+def _is_startup_checked(_: pystray.MenuItem) -> bool:
+    """
+    Check if Windows startup is enabled.
+
+    Returns:
+        True if startup entry exists, False otherwise.
+        Always False on non-Windows platforms.
+    """
+    if sys.platform != "win32":
+        return False
+
+    from twitch_marker_agent.platform import windows_startup
+
+    try:
+        return windows_startup.is_startup_enabled()
+    except windows_startup.StartupError:
+        return False
+
+
+def _is_auto_running(auto_state: AutoModeState) -> bool:
+    """
+    Check if auto mode worker thread is actually running.
+
+    Derives state from thread.is_alive() rather than stale boolean.
+    """
+    return auto_state.thread is not None and auto_state.thread.is_alive()
+
 def create_tray_menu(
     state: TrayState,
     auto_state: AutoModeState,
@@ -111,6 +140,7 @@ def create_tray_menu(
     on_change_folder: Callable[[], None],
     on_start_auto: Callable[[], None],
     on_stop_auto: Callable[[], None],
+    on_toggle_startup: Callable[[], None],
     on_exit: Callable[[], None],
 ) -> pystray.Menu:
     """
@@ -125,6 +155,7 @@ def create_tray_menu(
         on_change_folder: Callback to change output folder.
         on_start_auto: Callback to start auto mode.
         on_stop_auto: Callback to stop auto mode.
+        on_toggle_startup: Callback to toggle Windows startup.
         on_exit: Callback to exit app.
 
     Returns:
@@ -196,6 +227,13 @@ def create_tray_menu(
                 pystray.MenuItem("Open Folder", on_open_folder),
                 pystray.MenuItem("Change Folder...", on_change_folder),
             ),
+        ),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem(
+            "Start on Windows Login",
+            on_toggle_startup,
+            checked=_is_startup_checked,
+            visible=lambda _: sys.platform == "win32",
         ),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Exit", on_exit),
@@ -315,6 +353,7 @@ def run_tray_app(
                 on_change_folder=on_change_folder,
                 on_start_auto=on_start_auto,
                 on_stop_auto=on_stop_auto,
+                on_toggle_startup=on_toggle_startup,
                 on_exit=on_exit,
             )
             icon.update_menu()
@@ -401,8 +440,8 @@ def run_tray_app(
         nonlocal auto_state
         logger.info("Tray app exiting")
 
-        # Stop auto mode if running
-        if auto_state.is_running:
+        # Stop auto mode if thread is running
+        if _is_auto_running(auto_state):
             auto_state = stop_auto_mode(auto_state, agent, logger)
 
         if icon:
@@ -411,7 +450,8 @@ def run_tray_app(
     def on_start_auto() -> None:
         """Handle start auto mode action."""
         nonlocal auto_state
-        if auto_state.is_running:
+        # Only allow start if thread is not running
+        if _is_auto_running(auto_state):
             return
 
         auto_state = start_auto_mode(auto_state, agent, logger)
@@ -427,7 +467,8 @@ def run_tray_app(
     def on_stop_auto() -> None:
         """Handle stop auto mode action."""
         nonlocal auto_state
-        if not auto_state.is_running:
+        # Only attempt stop if thread is running
+        if not _is_auto_running(auto_state):
             return
 
         auto_state = stop_auto_mode(auto_state, agent, logger)
@@ -444,6 +485,40 @@ def run_tray_app(
             except Exception:
                 pass
 
+    def on_toggle_startup() -> None:
+        """Handle toggle startup on Windows login."""
+        if sys.platform != "win32":
+            return
+
+        from twitch_marker_agent.platform import windows_startup
+
+        try:
+            if windows_startup.is_startup_enabled():
+                windows_startup.disable_startup()
+                logger.info("Windows startup disabled")
+                if icon:
+                    try:
+                        icon.notify("Startup disabled", "Twitch Markers")
+                    except Exception:
+                        pass
+            else:
+                windows_startup.enable_startup()
+                logger.info("Windows startup enabled")
+                if icon:
+                    try:
+                        icon.notify("Will start on Windows login", "Twitch Markers")
+                    except Exception:
+                        pass
+        except windows_startup.StartupError as e:
+            logger.warning("Startup toggle failed: %s", str(e))
+            if icon:
+                try:
+                    icon.notify(f"Startup toggle failed: {e}", "Twitch Markers")
+                except Exception:
+                    pass
+
+        update_menu()
+
     # Create and run icon
     icon = pystray.Icon(
         name="twitch-marker-agent",
@@ -458,6 +533,7 @@ def run_tray_app(
             on_change_folder=on_change_folder,
             on_start_auto=on_start_auto,
             on_stop_auto=on_stop_auto,
+            on_toggle_startup=on_toggle_startup,
             on_exit=on_exit,
         ),
     )
@@ -485,7 +561,7 @@ def main() -> None:
     from twitch_marker_agent.core.twitch_oauth import TwitchOAuth
 
     # Load configuration
-    config = load_config()
+    config = load_config("local.config.json")
 
     # Setup logging
     logger = setup_logging(config, logger_name="twitch_marker_agent.tray")
@@ -498,13 +574,12 @@ def main() -> None:
 
     # Initialize OAuth
     oauth = TwitchOAuth(
-        client_id=config.client_id,
-        client_secret=config.client_secret,
-        redirect_uri=config.redirect_uri,
+        config=config,
         state_store=state_store,
-        http_client=http_client,
         logger=logger,
+        http_session=http_client,  # requests.Session()
     )
+
 
     try:
         run_tray_app(
