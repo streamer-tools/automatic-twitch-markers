@@ -2,13 +2,15 @@
 
 A Windows-friendly "set-and-forget" agent that automatically exports Twitch stream markers after a broadcast ends.
 
+> **Context for AI Agents**: Please read [docs/handoff.md](docs/handoff.md) for a <2 minute project sync.
+
 ## Overview
 
 This tool monitors your Twitch channel via EventSub WebSocket, detects when your stream goes offline, fetches the stream markers from the VOD, and exports them to CSV (Twitch-style) and/or EDL format for video editors like DaVinci Resolve.
 
 ### Why This Tool?
 
-**Streamer.bot Limitation**: Streamer.bot cannot directly fetch stream markers because the Twitch API's "Get Stream Markers" endpoint requires a `channel:read:broadcast` scope OAuth token from the broadcaster. Streamer.bot's built-in Twitch integration doesn't support this scope for marker retrieval.
+**Streamer.bot Limitation**: Streamer.bot cannot directly fetch stream markers because the Twitch API's "Get Stream Markers" endpoint requires a `channel:manage:broadcast` scope OAuth token from the broadcaster. Streamer.bot's built-in Twitch integration doesn't support this scope for marker retrieval.
 
 This agent solves that by:
 1. Running a one-time OAuth flow to get the necessary scopes
@@ -86,9 +88,13 @@ python -m twitch_marker_agent.app
 ```
 
 The tray app provides:
+- **Auto Mode** - automatically export markers when your stream ends
 - **Fetch Latest Markers (Now)** - manually fetch and export markers
 - **Output Format** - toggle CSV/EDL export formats
 - **Output Folder** - open or change export directory
+- **Start on Windows Login** - toggle automatic startup (Windows only)
+
+**Building executable**: See [docs/packaging.md](docs/packaging.md) for instructions on creating a standalone Windows exe.
 
 ## Configuration
 
@@ -114,29 +120,42 @@ Edit `config.json` in the project root:
 ### Required OAuth Scopes
 
 The agent will request these scopes during OAuth:
-- `channel:read:broadcast` - Required to read stream markers
+- `channel:manage:broadcast` - Required to read stream markers and manage broadcast settings (future-proofed for additional features)
 
 ## Project Structure
 
 ```
-src/twitch_marker_agent/
-├── app.py                 # Tray app entrypoint (stub)
-├── cli.py                 # CLI entrypoint (auth-login implemented)
-└── core/                  # Framework-agnostic core logic
-    ├── agent.py           # Legacy orchestrator (stub, superseded)
-    ├── agent_runner.py    # Async EventSub agent orchestrator (active)
-    ├── config.py          # Configuration loading/validation
-    ├── eventsub_ws.py     # EventSub WebSocket client
-    ├── eventsub_subscriptions.py # Helix subscription management
-    ├── export_csv.py      # CSV export (Twitch-style, implemented)
-    ├── export_edl.py      # EDL export for editors (implemented)
-    ├── logging_setup.py   # Logging configuration
-    ├── markers_api.py     # Helix Get Stream Markers (implemented)
-    ├── offline_handler.py # Stream offline notification handler
-    ├── retry.py           # Exponential backoff utility
-    ├── state_store.py     # SQLite state + token storage
-    ├── twitch_oauth.py    # OAuth login/refresh/validate
-    └── agent_runner.py    # Async EventSub agent orchestrator
+automatic-twitch-markers/
+├── .github/
+│   └── workflows/
+│       └── release.yml         # CI/CD: automated builds on v* tags
+├── docs/                       # Documentation
+│   ├── packaging.md           # Build instructions (PyInstaller)
+│   └── ...
+├── scripts/
+│   └── build_exe.ps1          # Local Windows exe build script
+├── src/twitch_marker_agent/
+│   ├── app.py                 # Tray app entrypoint (implemented)
+│   ├── cli.py                 # CLI entrypoint (auth-login)
+│   ├── tray_controller.py     # Tray UI logic (pure functions)
+│   ├── core/                  # Framework-agnostic core logic
+│   │   ├── agent.py           # Manual fetch orchestrator
+│   │   ├── agent_runner.py    # Async EventSub + auto mode orchestrator
+│   │   ├── config.py          # Configuration loading/validation
+│   │   ├── eventsub_ws.py     # EventSub WebSocket client
+│   │   ├── eventsub_subscriptions.py # Helix subscription management
+│   │   ├── export_csv.py      # CSV export (Twitch-style)
+│   │   ├── export_edl.py      # EDL export (DaVinci Resolve)
+│   │   ├── logging_setup.py   # Logging configuration
+│   │   ├── markers_api.py     # Helix Get Stream Markers
+│   │   ├── offline_handler.py # Stream offline notification handler
+│   │   ├── retry.py           # Exponential backoff utility
+│   │   ├── state_store.py     # SQLite state + token storage
+│   │   └── twitch_oauth.py    # OAuth login/refresh/validate
+│   ├── platform/              # Platform-specific features
+│   │   └── windows_startup.py # Windows startup integration (HKCU Run key)
+│   └── integrations/          # External tool integrations (future)
+└── tests/                     # Unit tests (290 tests, all passing)
 ```
 
 ## Next Implementation Steps
@@ -149,8 +168,10 @@ src/twitch_marker_agent/
 6. [x] Implement Helix Get Stream Markers API call
 7. [x] Implement CSV export (Twitch format)
 8. [x] Implement EDL export with timecode offset
-9. [x] Build tray app UI with pystray (v0.3.4)
-10. [ ] Add Windows startup integration
+9. [x] Build tray app UI with pystray (v0.4.0)
+10. [x] Add Windows startup integration
+11. [x] Package as Windows exe (PyInstaller)
+12. [x] Setup CI/CD for releases (GitHub Actions)
 
 ## Export Formats
 
@@ -199,21 +220,29 @@ The tray will include a folder picker to set the export destination:
 
 ## Changelog
 
-### v0.3.2 (2026-02-04)
-- **Stream Offline Handler & Markers API:**
-  - New module: `offline_handler.py`
-  - `handle_stream_offline()` - fetch markers with retry, export to CSV
-  - `should_handle_notification()` - filter/dedupe notifications
-  - Two-layer dedupe: in-memory message_id + StateStore video_id
-  - Retry with exponential backoff for 404/429 (VOD not ready)
-  - Exceptions: `MarkersFetchError`, `MarkersAuthError`, `MarkersNotFoundError`, `MarkersRateLimitError`
-- **Markers API (`markers_api.py`):**
-  - `get_stream_markers()` - GET /helix/streams/markers
-  - `get_latest_video_id()` - GET /helix/videos (most recent VOD)
-- **OAuth scope fix:** Changed from `user:read:broadcast` to `channel:read:broadcast`
-- Comprehensive tests: 33 new tests (166 total)
+### v0.4.0 (2026-02-07) - Release Readiness
+- **Windows Startup Integration (`platform/windows_startup.py`):**
+  - Registry-based "Run on Windows login" functionality (HKCU Run key)
+  - `enable_startup()`, `disable_startup()`, `is_startup_enabled()`
+  - `get_startup_command()` - handles frozen exe vs source code execution
+  - Tray app "Start on Windows Login" toggle with checked state
+- **Packaging (`scripts/build_exe.ps1`):**
+  - PyInstaller build script for Windows exe
+  - Single-file, windowed executable (`--onefile`, `--noconsole`)
+  - Bundles pystray/Pillow with `--collect-submodules`
+  - Output: `dist/TwitchMarkerAgent.exe`
+- **CI/CD (`.github/workflows/release.yml`):**
+  - Automated builds on `v*` tags and `workflow_dispatch`
+  - Full test suite run before build
+  - Workflow artifacts (always) + GitHub Release attachments (tags)
+  - Windows exe packaged as `TwitchMarkerAgent-windows.zip`
+- **Documentation:**
+  - `docs/packaging.md` - Local build, CI behavior, troubleshooting
+  - `docs/handoff.md` - Updated for release readiness milestone
+  - README - Packaging link, updated checklist
+- Comprehensive tests: 290 tests passing (fixed CreateKeyEx mock)
 
-### v0.3.4 (2026-02-04)
+### v0.3.4 (2026-02-05)
 - **Tray App UI (`app.py`):**
   - Windows system tray application with pystray
   - Manual fetch action: "Fetch Latest Markers (Now)"
@@ -230,7 +259,7 @@ The tray will include a folder picker to set the export destination:
   - `get_state()`/`set_state()` for generic key-value persistence
 - Comprehensive tests: 13 new tests (252 total)
 
-### v0.3.3 (2026-02-04)
+### v0.3.3 (2026-02-05)
 - **EDL Export (`export_edl.py`):**
   - DaVinci Resolve compatible format with marker metadata lines
   - Event format: `{idx:03}  001      V     C        {startTC} {endTC}`
@@ -248,6 +277,20 @@ The tray will include a folder picker to set the export destination:
   - Added `user_type`, `username` fields to Marker dataclass
 - **Offline handler** now exports both CSV and EDL when configured
 - Comprehensive tests: 73 new tests (239 total)
+
+### v0.3.2 (2026-02-04)
+- **Stream Offline Handler & Markers API:**
+  - New module: `offline_handler.py`
+  - `handle_stream_offline()` - fetch markers with retry, export to CSV
+  - `should_handle_notification()` - filter/dedupe notifications
+  - Two-layer dedupe: in-memory message_id + StateStore video_id
+  - Retry with exponential backoff for 404/429 (VOD not ready)
+  - Exceptions: `MarkersFetchError`, `MarkersAuthError`, `MarkersNotFoundError`, `MarkersRateLimitError`
+- **Markers API (`markers_api.py`):**
+  - `get_stream_markers()` - GET /helix/streams/markers
+  - `get_latest_video_id()` - GET /helix/videos (most recent VOD)
+- **OAuth scope:** Uses `channel:manage:broadcast` for Get Stream Markers endpoint and future broadcast management
+- Comprehensive tests: 33 new tests (166 total)
 
 ### v0.3.1 (2026-02-04)
 - **Helix EventSub Subscription Management:**

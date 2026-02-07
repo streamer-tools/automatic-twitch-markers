@@ -234,12 +234,17 @@ def run_manual_fetch(
     try:
         video_id = get_latest_video_id(
             http_client=http_client,
+            config=config,
             access_token=access_token,
-            client_id=config.client_id,
-            broadcaster_id=config.broadcaster_id,
+            user_id=config.broadcaster_id,
+            logger=logger,
         )
     except Exception as e:
-        logger.error("Manual fetch: failed to get video ID: %s", type(e).__name__)
+        logger.error(
+            "Manual fetch: failed to get video ID: %s: %s",
+            type(e).__name__,
+            str(e),
+        )
         return ManualFetchResult(
             success=False,
             message="Failed to get latest video. Check logs.",
@@ -258,9 +263,11 @@ def run_manual_fetch(
     try:
         marker_videos = get_stream_markers(
             http_client=http_client,
+            config=config,
             access_token=access_token,
-            client_id=config.client_id,
+            user_id=config.broadcaster_id,
             video_id=video_id,
+            logger=logger,
         )
     except MarkersNotFoundError:
         logger.info("Manual fetch: no markers found")

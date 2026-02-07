@@ -78,14 +78,14 @@ class EventSubMessage:
 
 ### 4) OAuth Scopes Readiness
 
-**Current scope:** `channel:read:broadcast` (updated from user:read:broadcast)
+**Current scope:** `channel:manage:broadcast`
 
 **Required for Get Stream Markers:**
-- `channel:read:broadcast` ✅ Already included
+- `channel:manage:broadcast` ✅ Included (also enables future broadcast management features)
 
-**Twitch docs confirm:** Required scope is `channel:read:broadcast` OR `channel:manage:broadcast`
+**Twitch docs confirm:** Required scope is `user:read:broadcast` OR `channel:manage:broadcast`
 
-**Verdict:** Scope is correctly configured.
+**Verdict:** Scope is correctly configured and future-proofed.
 
 ---
 

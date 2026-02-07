@@ -178,7 +178,7 @@ def get_stream_markers(
     Args:
         http_client: Configured requests Session.
         config: Application configuration.
-        access_token: Valid OAuth access token with channel:read:broadcast scope.
+        access_token: Valid OAuth access token with channel:manage:broadcast scope.
         user_id: Broadcaster user ID (returns markers from recent VODs).
         video_id: Specific video ID to get markers from.
         logger: Optional logger.
@@ -234,7 +234,7 @@ def get_stream_markers(
         log.error("Forbidden (403) - missing required scope")
         raise MarkersAuthError(
             "Missing required scope. Run 'auth-login' to re-authenticate with "
-            "channel:read:broadcast scope."
+            "channel:manage:broadcast scope."
         )
 
     if response.status_code == 404:
