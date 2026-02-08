@@ -170,7 +170,7 @@ class TestAgentRunnerNotificationDispatch(unittest.TestCase):
             await asyncio.sleep(10)
 
         eventsub_client.run_until_stopped = AsyncMock(side_effect=slow_run)
-        eventsub_client.stop = MagicMock()
+        eventsub_client.stop = AsyncMock()
         eventsub_client.close = AsyncMock()
 
         # Mock subscription ensure
@@ -235,7 +235,7 @@ class TestAgentRunnerNotificationDispatch(unittest.TestCase):
         eventsub_client.run_until_stopped = AsyncMock(
             side_effect=lambda: asyncio.sleep(10)
         )
-        eventsub_client.stop = MagicMock()
+        eventsub_client.stop = AsyncMock()
         eventsub_client.close = AsyncMock()
 
         ensure_fn = MagicMock()
@@ -291,7 +291,7 @@ class TestAgentRunnerNotificationDispatch(unittest.TestCase):
         eventsub_client.run_until_stopped = AsyncMock(
             side_effect=lambda: asyncio.sleep(10)
         )
-        eventsub_client.stop = MagicMock()
+        eventsub_client.stop = AsyncMock()
         eventsub_client.close = AsyncMock()
 
         ensure_fn = MagicMock()
@@ -353,7 +353,7 @@ class TestAgentRunnerStop(unittest.TestCase):
         eventsub_client = MagicMock()
         eventsub_client.connect = AsyncMock(return_value="session_123")
         eventsub_client.run_until_stopped = AsyncMock(side_effect=slow_run)
-        eventsub_client.stop = MagicMock()
+        eventsub_client.stop = AsyncMock()
         eventsub_client.close = AsyncMock()
 
         ensure_fn = MagicMock()
@@ -478,7 +478,7 @@ class TestAgentRunnerNoSecrets(unittest.TestCase):
         eventsub_client.run_until_stopped = AsyncMock(
             side_effect=lambda: asyncio.sleep(0.1)
         )
-        eventsub_client.stop = MagicMock()
+        eventsub_client.stop = AsyncMock()
         eventsub_client.close = AsyncMock()
 
         ensure_fn = MagicMock()
@@ -547,6 +547,47 @@ class TestAgentRunnerStopSignaling(unittest.TestCase):
             mock_stop_event.set
         )
 
+    @patch("twitch_marker_agent.core.agent_runner.asyncio.run_coroutine_threadsafe")
+    def test_request_stop_schedules_async_client_stop(
+        self, mock_run_coro: MagicMock
+    ) -> None:
+        """Should schedule async client.stop() using run_coroutine_threadsafe."""
+        from twitch_marker_agent.core.agent_runner import AgentRunner
+
+        config = make_mock_config()
+        logger = MagicMock(spec=logging.Logger)
+
+        # Create mock eventsub client with async stop
+        mock_client = MagicMock()
+        mock_client.stop = AsyncMock()
+
+        runner = AgentRunner(
+            config=config,
+            state_store=MagicMock(),
+            http_client=MagicMock(),
+            oauth=MagicMock(),
+            logger=logger,
+            eventsub_client=mock_client,
+        )
+
+        # Simulate state as if run_async() had started
+        mock_loop = MagicMock()
+        mock_stop_event = MagicMock()
+        runner._loop = mock_loop
+        runner._stop_event = mock_stop_event
+
+        # Call request_stop
+        runner.request_stop()
+
+        # Verify run_coroutine_threadsafe was called
+        mock_run_coro.assert_called_once()
+        call_args = mock_run_coro.call_args
+        # First arg should be a coroutine, second should be the loop
+        self.assertEqual(call_args.args[1], mock_loop)
+        # Verify the coroutine is from client.stop()
+        # (we can't easily inspect the coroutine object, but we know it was created)
+
+
 
 class TestAgentRunnerRestartReliability(unittest.TestCase):
     """Test restart reliability via _reset_state()."""
@@ -567,7 +608,7 @@ class TestAgentRunnerRestartReliability(unittest.TestCase):
         mock_client = MagicMock()
         mock_client.connect = AsyncMock(return_value="new_session")
         mock_client.run_until_stopped = AsyncMock(side_effect=slow_run)
-        mock_client.stop = MagicMock()
+        mock_client.stop = AsyncMock()
         mock_client.close = AsyncMock()
 
         # Create runner with mocked dependencies
@@ -601,6 +642,57 @@ class TestAgentRunnerRestartReliability(unittest.TestCase):
                 await task
             except asyncio.CancelledError:
                 pass
+
+        asyncio.run(run_test())
+
+
+class TestAgentRunnerStopResponsive(unittest.TestCase):
+    """Test that AgentRunner responds immediately to stop requests."""
+
+    def test_exits_promptly_on_stop_request(self) -> None:
+        """Should exit run_async promptly when request_stop is called."""
+        from twitch_marker_agent.core.agent_runner import AgentRunner
+
+        config = make_mock_config()
+        oauth = MagicMock()
+        oauth.get_valid_user_access_token.return_value = "test_token"
+        logger = MagicMock(spec=logging.Logger)
+
+        # Eventsub client that will not complete on its own
+        async def never_complete() -> None:
+            await asyncio.sleep(100)  # Long sleep
+
+        mock_client = MagicMock()
+        mock_client.connect = AsyncMock(return_value="session_123")
+        mock_client.run_until_stopped = AsyncMock(side_effect=never_complete)
+        mock_client.stop = AsyncMock()
+        mock_client.close = AsyncMock()
+
+        runner = AgentRunner(
+            config=config,
+            state_store=MagicMock(),
+            http_client=MagicMock(),
+            oauth=oauth,
+            logger=logger,
+            eventsub_client=mock_client,
+            ensure_subscription_fn=MagicMock(),
+        )
+
+        async def run_test() -> None:
+            import time
+
+            task = asyncio.create_task(runner.run_async())
+            await asyncio.sleep(0.1)  # Let it start
+
+            # Request stop and measure time to exit
+            start = time.time()
+            runner.request_stop()
+            await task  # Should complete quickly
+            elapsed = time.time() - start
+
+            # Should exit in under 1 second (immediate response)
+            self.assertLess(elapsed, 1.0, "run_async should exit promptly on stop")
+            self.assertFalse(runner.is_running)
 
         asyncio.run(run_test())
 

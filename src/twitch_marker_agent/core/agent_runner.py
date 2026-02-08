@@ -281,35 +281,52 @@ class AgentRunner:
                 self._consume_notifications(),
                 name="notification_consumer",
             )
+            stop_task = asyncio.create_task(
+                self._stop_event.wait(),
+                name="stop_event",
+            )
 
             # Wait for stop or task completion
             done, pending = await asyncio.wait(
-                [message_loop_task, notification_task],
+                [message_loop_task, notification_task, stop_task],
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
-            # Cancel pending tasks
-            for task in pending:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+            # Check if stop was requested
+            if stop_task in done:
+                self._logger.info("Stop requested, cancelling tasks")
+                # Cancel pending tasks
+                for task in pending:
+                    task.cancel()
+                # Wait for cancellations to complete
+                for task in pending:
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+            else:
+                # Cancel pending tasks (including stop_task if not done)
+                for task in pending:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
 
-            # Check for errors in completed tasks
-            for task in done:
-                try:
-                    task.result()
-                except EventSubConnectionLost:
-                    self._last_error = "EventSub connection lost"
-                    self._logger.warning("AgentRunner: connection lost")
-                except asyncio.CancelledError:
-                    pass
-                except Exception as e:
-                    self._last_error = f"Unexpected error: {type(e).__name__}"
-                    self._logger.error(
-                        "AgentRunner: unexpected error: %s", type(e).__name__
-                    )
+                # Check for errors in completed tasks
+                for task in done:
+                    try:
+                        task.result()
+                    except EventSubConnectionLost:
+                        self._last_error = "EventSub connection lost"
+                        self._logger.warning("AgentRunner: connection lost")
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as e:
+                        self._last_error = f"Unexpected error: {type(e).__name__}"
+                        self._logger.error(
+                            "AgentRunner: unexpected error: %s", type(e).__name__
+                        )
 
         except Exception as e:
             self._last_error = f"Agent error: {type(e).__name__}"
@@ -320,10 +337,15 @@ class AgentRunner:
             self._loop = None  # Clear loop reference
             self._logger.info("AgentRunner stopped")
 
-            # Clean up client
+            # Clean up client with timeout to prevent indefinite hang
             if self._eventsub_client:
                 try:
-                    await self._eventsub_client.close()
+                    await asyncio.wait_for(
+                        self._eventsub_client.close(),
+                        timeout=2.0,
+                    )
+                except asyncio.TimeoutError:
+                    self._logger.warning("EventSub client close timed out")
                 except Exception:
                     pass
 
@@ -462,6 +484,12 @@ class AgentRunner:
         elif not self._loop:
             self._logger.debug("No stored loop, stop event not signaled")
 
-        # Stop EventSub client
-        if self._eventsub_client:
-            self._eventsub_client.stop()
+        # Stop EventSub client (schedule async stop on event loop)
+        if self._eventsub_client and self._loop:
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self._eventsub_client.stop(), self._loop
+                )
+            except RuntimeError:
+                # Loop closed or not running
+                self._logger.debug("Could not schedule client stop, loop unavailable")

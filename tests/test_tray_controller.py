@@ -731,6 +731,86 @@ class TestAutoModeStatusChecks(unittest.TestCase):
         self.assertEqual(status, "Auto: Error")
 
 
+# =============================================================================
+# Tests for stop_auto_mode
+# =============================================================================
+
+
+class TestStopAutoMode(unittest.TestCase):
+    """Tests for stop_auto_mode function."""
+
+    def test_keeps_accurate_state_on_timeout(self) -> None:
+        """Should keep thread and is_running=True when timeout occurs."""
+        import threading
+        import time
+
+        # Create a mock agent that responds to request_stop
+        agent = unittest.mock.MagicMock()
+        agent.last_error = None
+        agent.request_stop = unittest.mock.MagicMock()
+
+        # Create a thread that won't exit promptly
+        def slow_worker() -> None:
+            time.sleep(10)  # Long sleep
+
+        thread = threading.Thread(target=slow_worker, daemon=True)
+        thread.start()
+
+        # Initial state with running thread
+        state = AutoModeState(
+            is_running=True,
+            thread=thread,
+            last_error=None,
+        )
+
+        logger = unittest.mock.MagicMock(spec=logging.Logger)
+
+        # Call stop_auto_mode with very short timeout
+        result = stop_auto_mode(state, agent, logger, timeout_seconds=0.1)
+
+        # Verify state accurately reflects thread still running
+        self.assertTrue(result.is_running, "Should report is_running=True when thread doesn't exit")
+        self.assertIsNotNone(result.thread, "Should keep thread reference")
+        self.assertIs(result.thread, thread, "Should keep same thread reference")
+        self.assertIsNotNone(result.last_error)
+        self.assertIn("not exit", result.last_error)
+
+        # Verify agent.request_stop was called
+        agent.request_stop.assert_called_once()
+
+    def test_marks_stopped_when_thread_exits(self) -> None:
+        """Should mark stopped when thread exits within timeout."""
+        import threading
+        import time
+
+        agent = unittest.mock.MagicMock()
+        agent.last_error = "some error"
+        agent.request_stop = unittest.mock.MagicMock()
+
+        # Create a thread that exits quickly
+        def quick_worker() -> None:
+            time.sleep(0.05)
+
+        thread = threading.Thread(target=quick_worker, daemon=True)
+        thread.start()
+
+        state = AutoModeState(
+            is_running=True,
+            thread=thread,
+            last_error=None,
+        )
+
+        logger = unittest.mock.MagicMock(spec=logging.Logger)
+
+        # Call with sufficient timeout
+        result = stop_auto_mode(state, agent, logger, timeout_seconds=1.0)
+
+        # Verify clean stop
+        self.assertFalse(result.is_running)
+        self.assertIsNone(result.thread)
+        self.assertEqual(result.last_error, "some error")  # From agent
+
+
 if __name__ == "__main__":
     unittest.main()
 
