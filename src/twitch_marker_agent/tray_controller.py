@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 # =============================================================================
 
 TRAY_OUTPUT_DIR_KEY = "tray.output_dir"
+TRAY_EDL_ENABLED_KEY = "tray.edl_enabled"
 
 
 # =============================================================================
@@ -119,54 +120,76 @@ def set_output_dir(
 
 
 # =============================================================================
-# Format Selection Functions
+# EDL Toggle Functions
 # =============================================================================
 
 
-def _normalize_formats(formats: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+def get_edl_enabled(state_store: "StateStore") -> bool:
     """
-    Normalize export formats: CSV always first, stable ordering, no duplicates.
+    Get EDL export enabled flag from StateStore.
 
     Args:
-        formats: Input formats (may be tuple or list).
+        state_store: State storage.
 
     Returns:
-        Tuple with "csv" first, then other formats in original order.
+        True if EDL export is enabled, False otherwise (default).
     """
-    result = ["csv"]  # CSV always first
-    seen = {"csv"}
+    stored_value = state_store.get_state(TRAY_EDL_ENABLED_KEY)
 
-    for fmt in formats:
-        fmt_lower = fmt.lower()
-        if fmt_lower not in seen:
-            result.append(fmt_lower)
-            seen.add(fmt_lower)
+    if stored_value is None:
+        return False
 
-    return tuple(result)
+    # Treat "true"/"1"/"yes" as True (case-insensitive)
+    normalized = str(stored_value).strip().lower()
+    return normalized in ("true", "1", "yes")
+
+
+def set_edl_enabled(state_store: "StateStore", enabled: bool) -> None:
+    """
+    Persist EDL export enabled flag to StateStore.
+
+    Args:
+        state_store: State storage.
+        enabled: Whether EDL export is enabled.
+    """
+    state_store.set_state(TRAY_EDL_ENABLED_KEY, "true" if enabled else "false")
+
+
+def get_export_formats_from_edl_flag(edl_enabled: bool) -> tuple[str, ...]:
+    """
+    Derive export formats list from EDL enabled flag.
+
+    CSV is always included. EDL included if edl_enabled=True.
+
+    Args:
+        edl_enabled: Whether EDL export is enabled.
+
+    Returns:
+        Tuple of format strings ("csv",) or ("csv", "edl").
+    """
+    if edl_enabled:
+        return ("csv", "edl")
+    return ("csv",)
 
 
 def get_manual_fetch_formats(
     config: "AppConfig",
-    selected: list[str] | None = None,
+    edl_enabled: bool,
 ) -> tuple[str, ...]:
     """
     Get export formats for manual fetch.
 
-    CSV is always included (enforced). User selection overrides config
-    defaults for additional formats.
+    CSV is always included. EDL included if edl_enabled=True.
+    Config parameter kept for future extensibility.
 
     Args:
-        config: App config for defaults.
-        selected: User-selected formats (overrides config).
+        config: App config (reserved for future use).
+        edl_enabled: Whether EDL export is enabled.
 
     Returns:
-        Tuple of format strings ("csv", "edl", etc.).
+        Tuple of format strings ("csv",) or ("csv", "edl").
     """
-    if selected:
-        return _normalize_formats(selected)
-
-    # Default to config.export_formats (also normalized)
-    return _normalize_formats(config.export_formats)
+    return get_export_formats_from_edl_flag(edl_enabled)
 
 
 # =============================================================================
@@ -211,6 +234,7 @@ def run_manual_fetch(
     from twitch_marker_agent.core.twitch_oauth import TokenRefreshError
     from twitch_marker_agent.core.markers_api import (
         get_latest_video_id,
+        get_video_title_and_date,
         get_stream_markers,
         MarkersAuthError,
         MarkersFetchError,
@@ -303,6 +327,21 @@ def run_manual_fetch(
     # Step 4: Export (always - no dedupe check for manual fetch)
     export_paths: list[Path] = []
 
+    # Fetch title/date for preferred filenames (non-fatal if it fails)
+    stream_title: str | None = None
+    stream_date: str | None = None
+    try:
+        stream_title, stream_date = get_video_title_and_date(
+            http_client=http_client,
+            config=config,
+            access_token=access_token,
+            video_id=video_id,
+            logger=logger,
+        )
+    except Exception as e:
+        logger.warning("Manual fetch: VOD metadata unavailable; using fallback filename (%s)", type(e).__name__)
+
+
     # Ensure output directory exists
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -314,6 +353,8 @@ def run_manual_fetch(
                 output_path=output_dir,
                 config=config,
                 video_id=video_id,
+                stream_title=stream_title,
+                stream_date=stream_date,
                 logger=logger,
             )
             export_paths.append(csv_path)
@@ -347,6 +388,8 @@ def run_manual_fetch(
                 output_path=output_dir,
                 config=config,
                 video_id=video_id,
+                stream_title=stream_title,
+                stream_date=stream_date,
                 timecode_offset_seconds=edl_offset_seconds,
                 logger=logger,
             )

@@ -6,7 +6,7 @@ The tray app runs in the background and provides manual marker export.
 
 UI Features:
 - Auto Mode: automatic marker export on stream end
-- Manual fetch action: "Fetch Latest Markers (Now)"
+- Manual fetch action: "Fetch Latest Stream Markers"
 - Output format toggles (CSV/EDL) for manual fetch
 - Output folder picker with persistence
 - Windows startup toggle
@@ -30,9 +30,11 @@ from twitch_marker_agent.tray_controller import (
     AutoModeState,
     ManualFetchResult,
     TrayState,
+    get_edl_enabled,
     get_manual_fetch_formats,
     resolve_output_dir,
     run_manual_fetch,
+    set_edl_enabled,
     set_output_dir,
     start_auto_mode,
     stop_auto_mode,
@@ -75,35 +77,6 @@ def create_tray_icon() -> Image.Image:
 # =============================================================================
 
 
-def _create_format_toggle(
-    format_name: str,
-    state: TrayState,
-    on_toggle: Callable[[str], None],
-) -> pystray.MenuItem:
-    """Create a format toggle menu item."""
-
-    def is_checked(_: pystray.MenuItem) -> bool:
-        return format_name in state.selected_formats
-
-    def toggle(_: pystray.MenuItem) -> None:
-        on_toggle(format_name)
-
-    # CSV is always enabled (can't be unchecked)
-    if format_name == "csv":
-        return pystray.MenuItem(
-            "CSV (always)",
-            toggle,
-            checked=lambda _: True,
-            enabled=False,
-        )
-
-    return pystray.MenuItem(
-        format_name.upper(),
-        toggle,
-        checked=is_checked,
-    )
-
-
 def _is_startup_checked(_: pystray.MenuItem) -> bool:
     """
     Check if Windows startup is enabled.
@@ -134,8 +107,9 @@ def _is_auto_running(auto_state: AutoModeState) -> bool:
 def create_tray_menu(
     state: TrayState,
     auto_state: AutoModeState,
+    state_store: "StateStore",
     on_fetch: Callable[[], None],
-    on_format_toggle: Callable[[str], None],
+    on_toggle_edl: Callable[[], None],
     on_open_folder: Callable[[], None],
     on_change_folder: Callable[[], None],
     on_start_auto: Callable[[], None],
@@ -149,8 +123,9 @@ def create_tray_menu(
     Args:
         state: Current tray state.
         auto_state: Current auto mode state.
+        state_store: State storage for EDL flag.
         on_fetch: Callback for fetch action.
-        on_format_toggle: Callback for format toggle.
+        on_toggle_edl: Callback for EDL toggle.
         on_open_folder: Callback to open output folder.
         on_change_folder: Callback to change output folder.
         on_start_auto: Callback to start auto mode.
@@ -165,7 +140,7 @@ def create_tray_menu(
     def get_fetch_text(_: pystray.MenuItem) -> str:
         if state.is_fetching:
             return "Fetching..."
-        return "Fetch Latest Markers (Now)"
+        return "Fetch Latest Stream Markers"
 
     def is_fetch_enabled(_: pystray.MenuItem) -> bool:
         return not state.is_fetching
@@ -215,10 +190,13 @@ def create_tray_menu(
         ),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem(
-            "Output Format",
+            "Additional Output Format",
             pystray.Menu(
-                _create_format_toggle("csv", state, on_format_toggle),
-                _create_format_toggle("edl", state, on_format_toggle),
+                pystray.MenuItem(
+                    "EDL",
+                    on_toggle_edl,
+                    checked=lambda _: get_edl_enabled(state_store),
+                ),
             ),
         ),
         pystray.MenuItem(
@@ -322,9 +300,7 @@ def run_tray_app(
         logger: Logger instance.
     """
     # Initialize state
-    state = TrayState(
-        selected_formats=list(config.export_formats),
-    )
+    state = TrayState()
     auto_state = AutoModeState()
 
     # Create AgentRunner (lazy, but we hold reference for start/stop)
@@ -347,8 +323,9 @@ def run_tray_app(
             icon.menu = create_tray_menu(
                 state=state,
                 auto_state=auto_state,
+                state_store=state_store,
                 on_fetch=on_fetch,
-                on_format_toggle=on_format_toggle,
+                on_toggle_edl=on_toggle_edl,
                 on_open_folder=on_open_folder,
                 on_change_folder=on_change_folder,
                 on_start_auto=on_start_auto,
@@ -369,9 +346,8 @@ def run_tray_app(
 
             try:
                 output_dir = resolve_output_dir(config, state_store)
-                export_formats = get_manual_fetch_formats(
-                    config, state.selected_formats
-                )
+                edl_enabled = get_edl_enabled(state_store)
+                export_formats = get_manual_fetch_formats(config, edl_enabled)
 
                 result: ManualFetchResult = run_manual_fetch(
                     http_client=http_client,
@@ -408,17 +384,10 @@ def run_tray_app(
         thread = threading.Thread(target=fetch_worker, daemon=True)
         thread.start()
 
-    def on_format_toggle(format_name: str) -> None:
-        """Handle format toggle."""
-        if format_name == "csv":
-            # CSV can't be disabled
-            return
-
-        if format_name in state.selected_formats:
-            state.selected_formats.remove(format_name)
-        else:
-            state.selected_formats.append(format_name)
-
+    def on_toggle_edl() -> None:
+        """Handle EDL toggle."""
+        current = get_edl_enabled(state_store)
+        set_edl_enabled(state_store, not current)
         update_menu()
 
     def on_open_folder() -> None:
@@ -527,8 +496,9 @@ def run_tray_app(
         menu=create_tray_menu(
             state=state,
             auto_state=auto_state,
+            state_store=state_store,
             on_fetch=on_fetch,
-            on_format_toggle=on_format_toggle,
+            on_toggle_edl=on_toggle_edl,
             on_open_folder=on_open_folder,
             on_change_folder=on_change_folder,
             on_start_auto=on_start_auto,

@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Tuple
 
 if TYPE_CHECKING:
     import requests
@@ -155,6 +155,31 @@ def parse_markers_response(response_data: dict[str, Any]) -> list[MarkerVideo]:
             )
 
     return results
+
+
+def get_video_title_and_date(
+    http_client,  # requests.Session
+    config,       # AppConfig
+    access_token: str,
+    video_id: str,
+    logger=None,
+) -> tuple[str | None, str | None]:
+    url = "https://api.twitch.tv/helix/videos"
+    headers = {
+        "Client-ID": config.client_id,
+        "Authorization": f"Bearer {access_token}",
+    }
+    resp = http_client.get(url, headers=headers, params={"id": video_id}, timeout=10)
+    resp.raise_for_status()
+    payload = resp.json()
+    data = payload.get("data") or []
+    if not data:
+        return None, None
+
+    title = data[0].get("title") or None
+    created_at = data[0].get("created_at") or None
+    stream_date = created_at[:10] if created_at else None  # YYYY-MM-DD
+    return title, stream_date
 
 
 # =============================================================================

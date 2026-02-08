@@ -29,6 +29,7 @@ from twitch_marker_agent.core.markers_api import (
     MarkersNotFoundError,
     MarkersRateLimitError,
     get_latest_video_id,
+    get_video_title_and_date,
     get_stream_markers,
 )
 from twitch_marker_agent.core.retry import RetryError, retry_with_backoff
@@ -268,21 +269,59 @@ def handle_stream_offline(
         )
 
     # Step 4: Export to configured formats
+    # Respect tray EDL toggle if present, fallback to config
     export_paths: list[Path] = []
 
+    # Fetch title/date for preferred filenames (non-fatal if it fails)
+    stream_title: str | None = None
+    stream_date: str | None = None
+    try:
+        stream_title, stream_date = get_video_title_and_date(
+            http_client=http_client,
+            config=config,
+            access_token=access_token,
+            video_id=video_id,
+            logger=logger,
+        )
+    except Exception as e:
+        logger.warning("VOD metadata unavailable; using fallback filename (%s)", type(e).__name__)
+
+
+    # Determine which formats to export
+    # Try tray EDL toggle first (if running in tray context)
+    from twitch_marker_agent.tray_controller import (
+        TRAY_EDL_ENABLED_KEY,
+        get_export_formats_from_edl_flag,
+    )
+
+    tray_edl_toggle = state_store.get_state(TRAY_EDL_ENABLED_KEY)
+    if tray_edl_toggle is not None:
+        # Tray toggle is set, use it
+        edl_enabled = tray_edl_toggle.strip().lower() in ("true", "1", "yes")
+        formats_to_export = get_export_formats_from_edl_flag(edl_enabled)
+    else:
+        # No tray toggle, fall back to config
+        formats_to_export = config.export_formats
+
+    # Ensure output directory exists
+    output_dir = config.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     # Export to CSV (always, since it's implemented)
-    if "csv" in config.export_formats:
+    if "csv" in formats_to_export:
         csv_path = export_markers_csv(
             markers=all_markers,
             output_path=config.output_dir,
             config=config,
             video_id=video_id,
+            stream_title=stream_title,
+            stream_date=stream_date,
             logger=logger,
         )
         export_paths.append(csv_path)
 
     # EDL export
-    if "edl" in config.export_formats:
+    if "edl" in formats_to_export:
         # Compute offset from config
         edl_offset_seconds = 0
         if config.resolve_offset_enabled:
@@ -299,6 +338,8 @@ def handle_stream_offline(
             output_path=config.output_dir,
             config=config,
             video_id=video_id,
+            stream_title=stream_title,
+            stream_date=stream_date,
             timecode_offset_seconds=edl_offset_seconds,
             logger=logger,
         )

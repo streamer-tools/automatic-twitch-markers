@@ -89,7 +89,7 @@ python -m twitch_marker_agent.app
 
 The tray app provides:
 - **Auto Mode** - automatically export markers when your stream ends
-- **Fetch Latest Markers (Now)** - manually fetch and export markers
+- **Fetch Latest Stream Markers** - manually fetch and export markers
 - **Output Format** - toggle CSV/EDL export formats
 - **Output Folder** - open or change export directory
 - **Start on Windows Login** - toggle automatic startup (Windows only)
@@ -196,7 +196,7 @@ The Windows tray app provides automatic and manual marker export:
 
 ### Manual Fetch Action
 
-**"Fetch Latest Markers (Now)"**
+**"Fetch Latest Stream Markers"**
 - Runs the same fetch + export pipeline as the automatic `stream.offline` trigger
 - Writes output to the same folder with the same naming conventions
 - Useful for testing or fetching markers before stream ends
@@ -245,7 +245,7 @@ The tray will include a folder picker to set the export destination:
 ### v0.3.4 (2026-02-05)
 - **Tray App UI (`app.py`):**
   - Windows system tray application with pystray
-  - Manual fetch action: "Fetch Latest Markers (Now)"
+  - Manual fetch action: "Fetch Latest Stream Markers"
   - Output format toggles (CSV/EDL) for runtime override
   - Output folder picker with persistence via StateStore
   - Threaded fetch keeps UI responsive
