@@ -63,7 +63,7 @@ Twitch Marker Agent
 ├─ Stop Auto Mode         (visible when running)
 ├─ Auto: Running          (status indicator)
 ├─ ───────────────────────────
-├─ Fetch Latest Markers (Now)
+├─ Fetch Latest Stream Markers
 ├─ Output Format
 │   ├─ ☑ CSV
 │   └─ ☐ EDL

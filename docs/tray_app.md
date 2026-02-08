@@ -1,109 +1,56 @@
-# Tray App Design
+# Tray Application
 
-This document describes the Windows system tray application for Automatic Twitch Markers.
+The Twitch Marker Agent system tray application provides a simple interface for managing marker exports.
 
-## Overview
+## Features
 
-The tray app provides a "set-and-forget" UI for the marker exporter agent:
-- Runs in the Windows system tray
-- Manual fetch action for on-demand marker export
-- Runtime format selection (CSV/EDL)
-- Output folder picker with persistence
+### Auto Mode
+Auto mode automatically exports markers when your stream ends. When enabled, the agent:
+- Monitors your stream status via Twitch EventSub WebSocket
+- Detects when your stream goes offline
+- Fetches markers from your latest VOD
+- Exports to configured formats automatically
 
-## Architecture
+To start auto mode, right-click the tray icon and select **"Start Auto Mode"**. To stop, select **"Stop Auto Mode"**.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                        app.py                           │
-│              (pystray UI layer - Windows tray)          │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│                   tray_controller.py                    │
-│        (Pure functions - UI-agnostic, testable)         │
-│  • resolve_output_dir()                                 │
-│  • set_output_dir()                                     │
-│  • get_manual_fetch_formats()                           │
-│  • run_manual_fetch()                                   │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│                      core/*                             │
-│    (Framework-agnostic: offline_handler, oauth, etc)    │
-└─────────────────────────────────────────────────────────┘
-```
+### Manual Fetch
+The **"Fetch Latest Stream Markers"** action allows you to manually export markers from your latest VOD on demand. This is useful for:
+- One-off marker exports
+- Testing your setup
+- Exporting markers without running auto mode
 
-**Key principle:** `core/` must not import pystray. All UI dependencies stay in `app.py`.
+### Output Format Selection
 
-## Menu Structure
+CSV markers are **always exported** (implicit, not shown in menu). You can optionally enable EDL export:
 
-```
-Twitch Marker Agent
-├─ Fetch Latest Markers (Now)
-├─ ───────────────────────────
-├─ Output Format
-│   ├─ ☑ CSV
-│   └─ ☐ EDL
-├─ Output Folder
-│   ├─ Open Folder
-│   └─ Change Folder...
-├─ ───────────────────────────
-└─ Exit
-```
+**Additional Output Format** → **EDL**
+- ✅ Checked: Export both CSV and EDL
+- ☐ Unchecked: Export CSV only (default)
 
-## Manual Fetch Behavior
+Your EDL preference is saved and persists across restarts.
 
-**Trigger:** User clicks "Fetch Latest Markers (Now)"
+**Important:**  This toggle affects **both** manual fetch and auto mode exports. When EDL is enabled, both features will export CSV + EDL files.
 
-**Pipeline:**
-1. Get valid access token via `TwitchOAuth.get_valid_user_access_token()`
-2. Fetch latest video ID for broadcaster
-3. Fetch markers for that video
-4. Export to selected formats (CSV/EDL)
-5. Show notification with result
+### Output Folder
+- **Open Folder**: Opens the current output folder in your file manager
+- **Change Folder**: Select a different output folder (persists across restarts)
 
-**Dedupe:** Manual fetch uses `force=True` to always export, ignoring processed_video dedupe. User intent is explicit.
+### Windows Startup
+Enable **"Start on Windows Login"** to automatically launch the tray app when you sign in to Windows.
 
-**Threading:** Fetch runs in worker thread to keep UI responsive.
+## Default Behavior
 
-## Output Directory
-
-**Precedence:**
-1. User-selected via folder picker (persisted in StateStore)
-2. Fallback to `config.output_dir`
-
-**StateStore key:** `tray.output_dir`
-
-## Format Selection
-
-**V1 behavior:** In-memory only
-- Defaults to `config.export_formats` on startup
-- User toggles are session-only
-- Future: persist to StateStore
-
-## Icon
-
-Generated at runtime via Pillow (no asset file):
-```python
-# 64x64 purple circle (Twitch-ish color)
-draw.ellipse([4, 4, 60, 60], fill="#9147ff")
-```
-
-## Error Handling
-
-| Error | User Message |
-|-------|--------------|
-| `TokenRefreshError` | "Not logged in. Run auth-login first." |
-| `MarkersAuthError` | "Re-auth required. Run auth-login." |
-| `MarkersFetchError` | "Failed to fetch markers. Check logs." |
-| No markers found | "No markers found for latest stream." |
+- EDL export: **Disabled** (CSV-only)
+- Output folder: Value from `config.json`
+- Auto mode: **Stopped** (start manually when needed)
 
 ## Configuration
 
-No config.json changes. Tray uses existing config values:
-- `broadcaster_id` - which channel to fetch
-- `export_formats` - default format selection
-- `output_dir` - fallback export location
-- `resolve_offset_enabled` / `resolve_offset_timecode` - EDL offset
+The tray app loads settings from `local.config.json`. See the main README for configuration details.
+
+## Tips
+
+- The tray icon shows "M" for markers
+- Right-click the icon to access all features
+- Notifications appear for fetch results and auto mode status changes
+- Check the logs if exports fail (see README for log location)

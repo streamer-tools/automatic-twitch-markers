@@ -14,12 +14,16 @@ from unittest.mock import MagicMock, patch
 
 from twitch_marker_agent.tray_controller import (
     AutoModeState,
+    TRAY_EDL_ENABLED_KEY,
     TRAY_OUTPUT_DIR_KEY,
     ManualFetchResult,
     TrayState,
+    get_edl_enabled,
+    get_export_formats_from_edl_flag,
     get_manual_fetch_formats,
     resolve_output_dir,
     run_manual_fetch,
+    set_edl_enabled,
     set_output_dir,
     start_auto_mode,
     stop_auto_mode,
@@ -121,59 +125,140 @@ class TestSetOutputDir(unittest.TestCase):
 
 
 # =============================================================================
+# Tests for EDL Toggle Functions
+# =============================================================================
+
+
+class TestGetEdlEnabled(unittest.TestCase):
+    """Tests for get_edl_enabled function."""
+
+    def test_returns_false_by_default(self) -> None:
+        """Should return False when StateStore has no value."""
+        state_store = make_mock_state_store()
+        state_store.get_state.return_value = None
+
+        result = get_edl_enabled(state_store)
+
+        self.assertFalse(result)
+        state_store.get_state.assert_called_once_with(TRAY_EDL_ENABLED_KEY)
+
+    def test_returns_true_for_true_string(self) -> None:
+        """Should return True for 'true' string."""
+        state_store = make_mock_state_store()
+        state_store.get_state.return_value = "true"
+
+        result = get_edl_enabled(state_store)
+
+        self.assertTrue(result)
+
+    def test_returns_true_for_one(self) -> None:
+        """Should return True for '1' string."""
+        state_store = make_mock_state_store()
+        state_store.get_state.return_value = "1"
+
+        result = get_edl_enabled(state_store)
+
+        self.assertTrue(result)
+
+    def test_returns_true_for_yes(self) -> None:
+        """Should return True for 'yes' string."""
+        state_store = make_mock_state_store()
+        state_store.get_state.return_value = "yes"
+
+        result = get_edl_enabled(state_store)
+
+        self.assertTrue(result)
+
+    def test_returns_false_for_false_string(self) -> None:
+        """Should return False for 'false' string."""
+        state_store = make_mock_state_store()
+        state_store.get_state.return_value = "false"
+
+        result = get_edl_enabled(state_store)
+
+        self.assertFalse(result)
+
+    def test_case_insensitive(self) -> None:
+        """Should handle case-insensitive values."""
+        state_store = make_mock_state_store()
+        state_store.get_state.return_value = "TRUE"
+
+        result = get_edl_enabled(state_store)
+
+        self.assertTrue(result)
+
+
+class TestSetEdlEnabled(unittest.TestCase):
+    """Tests for set_edl_enabled function."""
+
+    def test_persists_true(self) -> None:
+        """Should store 'true' when enabled=True."""
+        state_store = make_mock_state_store()
+
+        set_edl_enabled(state_store, True)
+
+        state_store.set_state.assert_called_once_with(TRAY_EDL_ENABLED_KEY, "true")
+
+    def test_persists_false(self) -> None:
+        """Should store 'false' when enabled=False."""
+        state_store = make_mock_state_store()
+
+        set_edl_enabled(state_store, False)
+
+        state_store.set_state.assert_called_once_with(TRAY_EDL_ENABLED_KEY, "false")
+
+
+class TestGetExportFormatsFromEdlFlag(unittest.TestCase):
+    """Tests for get_export_formats_from_edl_flag function."""
+
+    def test_csv_only_when_disabled(self) -> None:
+        """Should return only CSV when EDL disabled."""
+        result = get_export_formats_from_edl_flag(False)
+
+        self.assertEqual(result, ("csv",))
+
+    def test_csv_and_edl_when_enabled(self) -> None:
+        """Should return CSV and EDL when EDL enabled."""
+        result = get_export_formats_from_edl_flag(True)
+
+        self.assertEqual(result, ("csv", "edl"))
+
+
+# =============================================================================
 # Tests for get_manual_fetch_formats
 # =============================================================================
+
 
 
 class TestGetManualFetchFormats(unittest.TestCase):
     """Tests for get_manual_fetch_formats function."""
 
-    def test_returns_selected(self) -> None:
-        """Should return selected formats with CSV first."""
+    def test_csv_only_when_edl_disabled(self) -> None:
+        """Should return only CSV when EDL disabled."""
         config = make_mock_config()
-        selected = ["edl", "csv"]
 
-        result = get_manual_fetch_formats(config, selected)
+        result = get_manual_fetch_formats(config, edl_enabled=False)
+
+        self.assertEqual(result, ("csv",))
+
+    def test_csv_and_edl_when_edl_enabled(self) -> None:
+        """Should return CSV and EDL when EDL enabled."""
+        config = make_mock_config()
+
+        result = get_manual_fetch_formats(config, edl_enabled=True)
 
         self.assertEqual(result, ("csv", "edl"))
 
-    def test_default_from_config(self) -> None:
-        """Should default to config.export_formats when no selection."""
+    def test_config_parameter_unused(self) -> None:
+        """Config parameter is present but unused (for future extensibility)."""
         config = make_mock_config()
-        config.export_formats = ("csv", "edl")
+        config.export_formats = ("csv", "edl")  # Config is ignored
 
-        result = get_manual_fetch_formats(config, None)
+        result = get_manual_fetch_formats(config, edl_enabled=False)
 
-        self.assertEqual(result, ("csv", "edl"))
+        self.assertEqual(result, ("csv",))  # Only CSV, EDL disabled
 
-    def test_enforces_csv(self) -> None:
-        """Should enforce CSV even if not in selection."""
-        config = make_mock_config()
-        selected = ["edl"]
 
-        result = get_manual_fetch_formats(config, selected)
-
-        self.assertIn("csv", result)
-        self.assertEqual(result[0], "csv")  # CSV first
-
-    def test_default_enforces_csv(self) -> None:
-        """Should enforce CSV when selected=None and config lacks csv."""
-        config = make_mock_config()
-        config.export_formats = ("edl",)  # Config without CSV
-
-        result = get_manual_fetch_formats(config, None)
-
-        self.assertIn("csv", result)
-        self.assertEqual(result[0], "csv")  # CSV first
-
-    def test_default_preserves_order(self) -> None:
-        """Should normalize config formats with CSV first, stable ordering."""
-        config = make_mock_config()
-        config.export_formats = ("edl", "csv", "json")  # CSV not first
-
-        result = get_manual_fetch_formats(config, None)
-
-        self.assertEqual(result, ("csv", "edl", "json"))  # CSV moved first
 
 
 # =============================================================================
