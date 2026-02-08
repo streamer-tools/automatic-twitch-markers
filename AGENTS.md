@@ -24,8 +24,15 @@ Never commit secrets or sensitive runtime artifacts to git.
 **How we handle secrets:**
 - Commit `config.json` with safe placeholders only (no real secrets).
 - Put real secrets in one of:
-  - `local.config.json` (gitignored), OR
+  - `config.local.json` (gitignored - preferred for local development), OR
   - Environment variables (preferred for SaaS / CI later).
+
+**NEVER log secrets in code:**
+- Do NOT log tokens (access_token, refresh_token)
+- Do NOT log client_secret
+- Do NOT log Authorization headers
+- Do NOT log OAuth callback parameters (code, state)
+- Do NOT log raw token API payloads
 
 If a secret is ever committed by mistake:
 1) Assume it is compromised

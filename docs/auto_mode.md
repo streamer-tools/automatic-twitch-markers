@@ -64,8 +64,7 @@ Twitch Marker Agent
 ├─ Auto: Running          (status indicator)
 ├─ ───────────────────────────
 ├─ Fetch Latest Stream Markers
-├─ Output Format
-│   ├─ ☑ CSV
+├─ Additional Output Format
 │   └─ ☐ EDL
 ├─ Output Folder
 │   ├─ Open Folder

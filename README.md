@@ -90,7 +90,7 @@ python -m twitch_marker_agent.app
 The tray app provides:
 - **Auto Mode** - automatically export markers when your stream ends
 - **Fetch Latest Stream Markers** - manually fetch and export markers
-- **Output Format** - toggle CSV/EDL export formats
+- **Additional Output Format** → **EDL** - toggle EDL export (CSV always exported)
 - **Output Folder** - open or change export directory
 - **Start on Windows Login** - toggle automatic startup (Windows only)
 
@@ -98,7 +98,7 @@ The tray app provides:
 
 ## Configuration
 
-Edit `config.json` in the project root:
+For local development, copy `config.json` to `config.local.json` (gitignored) and edit with your Twitch app credentials. The app will load `config.local.json` if present, otherwise falls back to `config.json`.
 
 | Key | Type | Description |
 |-----|------|-------------|
@@ -201,15 +201,13 @@ The Windows tray app provides automatic and manual marker export:
 - Writes output to the same folder with the same naming conventions
 - Useful for testing or fetching markers before stream ends
 
-### Output Format Dropdown
+### Additional Output Format
 
-The tray will include a runtime format selector:
-- **Twitch CSV** (always available)
-- **Resolve EDL** (shown when EDL export is implemented)
-
-This acts as a runtime override for manual fetches only:
-- Does not modify `config.json`
-- Selection may be persisted via StateStore keys in a future version
+**CSV is always exported** (implicit). Optionally enable **EDL** export:
+- Navigate to **Additional Output Format** → **EDL**
+- Toggle checked to export both CSV and EDL
+- Your preference is saved and persists across restarts
+- Applies to both manual fetch and auto mode
 
 ### Output Folder Picker
 
@@ -219,6 +217,20 @@ The tray will include a folder picker to set the export destination:
 - Default falls back to `output_dir` from config.json
 
 ## Changelog
+
+### v0.4.1 (Unreleased)
+- **Auto Mode Clean Shutdown:**
+  - Fixed shutdown hang by adding stop-aware wait in `AgentRunner.run_async()`
+  - Added stop_task to wait list for immediate response to stop requests
+  - Bounded cleanup timeout (2s max) to prevent indefinite hang
+  - Fixed RuntimeWarning: scheduled async `EventSubWebSocketClient.stop()` using `asyncio.run_coroutine_threadsafe()`
+  - Updated `stop_auto_mode()` to accurately report state when thread doesn't exit within timeout
+- **Tray UX Improvements:**
+  - Simplified output format UX: CSV export is now implicit (always exported)
+  - Replaced "Output Format" submenu with "Additional Output Format" → "EDL" toggle
+  - EDL toggle persists via StateStore and affects both manual fetch and auto mode
+  - Updated tray menu labels: "Fetch Latest Markers (Now)" → "Fetch Latest Stream Markers"
+- **Tests:** All 298 tests passing
 
 ### v0.4.0 (2026-02-07) - Release Readiness
 - **Windows Startup Integration (`platform/windows_startup.py`):**
