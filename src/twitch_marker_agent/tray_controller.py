@@ -502,8 +502,15 @@ def stop_auto_mode(
         state.thread.join(timeout=timeout_seconds)
 
         if state.thread.is_alive():
+            # Thread still running - keep accurate state
             logger.warning(
-                "Auto mode thread did not exit within timeout, marking stopped"
+                "Stop requested, thread still running after timeout"
+            )
+            # Return state reflecting thread is still running
+            return AutoModeState(
+                is_running=True,
+                thread=state.thread,
+                last_error="Stop requested but thread did not exit",
             )
         else:
             logger.info("Auto mode stopped cleanly")
