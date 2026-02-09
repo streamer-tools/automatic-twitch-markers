@@ -78,12 +78,14 @@ During scaffold development, modules are implemented incrementally:
 - EventSub WebSocket (`eventsub_ws.py` - `connect`, `run_until_stopped`, message dispatch)
 - EventSub Subscriptions (`eventsub_subscriptions.py` - `ensure_stream_offline_subscription`, create/list/delete)
 - Helix Markers API (`markers_api.py` - `get_stream_markers`, `get_latest_video_id`)
+- Helix Videos API (`videos_api.py` - `list_videos_in_date_range`, `ArchivedVideo` dataclass)
 - Stream Offline Handler (`offline_handler.py` - `handle_stream_offline`, `should_handle_notification`)
 - CSV Export (`export_csv.py` - `export_markers_csv`)
 - EDL Export (`export_edl.py` - `export_markers_edl`, `timecode_to_seconds`, config-driven offset)
-- Tray App UI (`app.py` - `run_tray_app`, manual fetch, format toggles, folder picker, auto mode start/stop)
-- Tray Controller (`tray_controller.py` - `resolve_output_dir`, `set_output_dir`, `run_manual_fetch`, `start_auto_mode`, `stop_auto_mode`)
+- Tray App UI (`app.py` - `run_tray_app`, manual fetch, multi-fetch, format toggles, folder picker, auto mode start/stop)
+- Tray Controller (`tray_controller.py` - `resolve_output_dir`, `set_output_dir`, `run_manual_fetch`, `run_multi_fetch`, `start_auto_mode`, `stop_auto_mode`)
 - Agent Runner (`agent_runner.py` - async EventSub orchestrator with connect/subscribe/dispatch)
+- Date Range Dialog (`ui/date_range_dialog.py` - `DateRangeDialog` tkinter modal)
 
 **Still Stubbed:**
 - Legacy orchestrator (`core/agent.py`): Superseded by `agent_runner.py`

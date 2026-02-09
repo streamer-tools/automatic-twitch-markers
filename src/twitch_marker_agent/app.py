@@ -29,11 +29,13 @@ from PIL import Image, ImageDraw
 from twitch_marker_agent.tray_controller import (
     AutoModeState,
     ManualFetchResult,
+    MultiFetchResult,
     TrayState,
     get_edl_enabled,
     get_manual_fetch_formats,
     resolve_output_dir,
     run_manual_fetch,
+    run_multi_fetch,
     set_edl_enabled,
     set_output_dir,
     start_auto_mode,
@@ -109,6 +111,7 @@ def create_tray_menu(
     auto_state: AutoModeState,
     state_store: "StateStore",
     on_fetch: Callable[[], None],
+    on_multi_fetch: Callable[[], None],
     on_toggle_edl: Callable[[], None],
     on_open_folder: Callable[[], None],
     on_change_folder: Callable[[], None],
@@ -186,6 +189,11 @@ def create_tray_menu(
         pystray.MenuItem(
             get_fetch_text,
             on_fetch,
+            enabled=is_fetch_enabled,
+        ),
+        pystray.MenuItem(
+            "Fetch Multiple Stream Markers",
+            on_multi_fetch,
             enabled=is_fetch_enabled,
         ),
         pystray.Menu.SEPARATOR,
@@ -325,6 +333,7 @@ def run_tray_app(
                 auto_state=auto_state,
                 state_store=state_store,
                 on_fetch=on_fetch,
+                on_multi_fetch=on_multi_fetch,
                 on_toggle_edl=on_toggle_edl,
                 on_open_folder=on_open_folder,
                 on_change_folder=on_change_folder,
@@ -382,6 +391,68 @@ def run_tray_app(
                 update_menu()
 
         thread = threading.Thread(target=fetch_worker, daemon=True)
+        thread.start()
+
+    def on_multi_fetch() -> None:
+        """Handle multi-fetch action with date range dialog."""
+        if state.is_fetching:
+            return
+
+        # Show date range dialog
+        from twitch_marker_agent.ui.date_range_dialog import DateRangeDialog
+
+        dialog = DateRangeDialog(max_days_back=60)
+        date_range = dialog.show()
+
+        if date_range is None:
+            # User cancelled
+            return
+
+        start_date, end_date = date_range
+
+        def multi_fetch_worker() -> None:
+            state.is_fetching = True
+            update_menu()
+
+            try:
+                output_dir = resolve_output_dir(config, state_store)
+                edl_enabled = get_edl_enabled(state_store)
+                export_formats = get_manual_fetch_formats(config, edl_enabled)
+
+                result = run_multi_fetch(
+                    http_client=http_client,
+                    config=config,
+                    state_store=state_store,
+                    oauth=oauth,
+                    output_dir=output_dir,
+                    export_formats=export_formats,
+                    start_date=start_date,
+                    end_date=end_date,
+                    logger=logger,
+                )
+
+                state.last_fetch_result = (
+                    "success" if result.success else f"error:{result.message}"
+                )
+
+                # Show notification
+                if icon:
+                    try:
+                        icon.notify(
+                            result.message,
+                            "Twitch Markers" if result.success else "Multi-Fetch",
+                        )
+                    except Exception:
+                        logger.info("Multi-fetch result: %s", result.message)
+
+            except Exception as e:
+                logger.error("Multi-fetch failed: %s", type(e).__name__)
+                state.last_fetch_result = f"error:{type(e).__name__}"
+            finally:
+                state.is_fetching = False
+                update_menu()
+
+        thread = threading.Thread(target=multi_fetch_worker, daemon=True)
         thread.start()
 
     def on_toggle_edl() -> None:
@@ -498,6 +569,7 @@ def run_tray_app(
             auto_state=auto_state,
             state_store=state_store,
             on_fetch=on_fetch,
+            on_multi_fetch=on_multi_fetch,
             on_toggle_edl=on_toggle_edl,
             on_open_folder=on_open_folder,
             on_change_folder=on_change_folder,

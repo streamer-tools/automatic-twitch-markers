@@ -19,6 +19,7 @@ import asyncio
 import logging
 import threading
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -60,6 +61,19 @@ class ManualFetchResult:
     message: str
     export_paths: list[Path] = field(default_factory=list)
     marker_count: int = 0
+
+
+@dataclass
+class MultiFetchResult:
+    """Result from multi-fetch operation."""
+
+    success: bool
+    message: str
+    total_vods: int = 0
+    successful_vods: int = 0
+    skipped_vods: int = 0  # No markers found
+    failed_vods: int = 0
+    export_paths: list[Path] = field(default_factory=list)
 
 
 @dataclass
@@ -523,3 +537,209 @@ def stop_auto_mode(
         thread=None,
         last_error=last_error,
     )
+
+
+# =============================================================================
+# Multi-Fetch Date Range Functions
+# =============================================================================
+
+
+def validate_date_range(
+    start_date: date,
+    end_date: date,
+    max_days_back: int = 60,
+) -> tuple[bool, str]:
+    """
+    Validate date range constraints for multi-fetch.
+
+    Rules:
+    - start_date <= end_date
+    - end_date <= today
+    - start_date >= today - max_days_back
+
+    Args:
+        start_date: Range start (inclusive).
+        end_date: Range end (inclusive).
+        max_days_back: Maximum days back from today (default: 60).
+
+    Returns:
+        (is_valid: bool, error_message: str)
+        If valid, error_message is empty string.
+    """
+    today = date.today()
+    earliest_allowed = today - timedelta(days=max_days_back)
+
+    if start_date > end_date:
+        return False, f"Start date ({start_date}) must be before or equal to end date ({end_date})"
+
+    if end_date > today:
+        return False, f"End date ({end_date}) cannot be in the future (today is {today})"
+
+    if start_date < earliest_allowed:
+        return False, f"Start date ({start_date}) cannot be more than {max_days_back} days ago (earliest: {earliest_allowed})"
+
+    return True, ""
+
+
+def run_multi_fetch(
+    http_client,
+    config,  
+    state_store,
+    oauth,
+    output_dir,
+    export_formats,
+    start_date,
+    end_date,
+    logger,
+):
+    """Fetch and export markers from multiple VODs in date range."""
+    from twitch_marker_agent.core.twitch_oauth import TokenRefreshError
+    from twitch_marker_agent.core.videos_api import list_videos_in_date_range, VideosFetchError
+    from twitch_marker_agent.core.markers_api import get_stream_markers, MarkersAuthError, MarkersFetchError, MarkersNotFoundError
+    from twitch_marker_agent.core.export_csv import export_markers_csv
+    from twitch_marker_agent.core.export_edl import (
+        export_markers_edl,
+        timecode_to_seconds,
+        DEFAULT_OFFSET_SECONDS,
+    )
+    
+    # Validate date range
+    is_valid, error_msg = validate_date_range(start_date, end_date)
+    if not is_valid:
+        logger.warning("Multi-fetch: invalid date range: %s", error_msg)
+        return MultiFetchResult(success=False, message=error_msg)
+    
+    # Get access token
+    try:
+        access_token = oauth.get_valid_user_access_token(min_ttl_seconds=60)
+    except TokenRefreshError:
+        logger.warning("Multi-fetch failed: not authenticated")
+        return MultiFetchResult(success=False, message="Not logged in. Run auth-login first.")
+    
+    # List videos in date range
+    logger.info("Multi-fetch: listing videos from %s to %s", start_date.isoformat(), end_date.isoformat())
+    try:
+        videos = list_videos_in_date_range(http_client=http_client, config=config, access_token=access_token, user_id=config.broadcaster_id, start_date=start_date, end_date=end_date, logger=logger)
+    except VideosFetchError as e:
+        logger.error("Multi-fetch: failed to list videos: %s", type(e).__name__)
+        return MultiFetchResult(success=False, message=f"Failed to list videos: {str(e)}")
+    
+    if not videos:
+        logger.info("Multi-fetch: no VODs found in date range")
+        return MultiFetchResult(success=True, message=f"No VODs found between {start_date.isoformat()} and {end_date.isoformat()}.", total_vods=0)
+    
+    logger.info("Multi-fetch: found %d VODs in range", len(videos))
+    
+    # Process each VOD
+    total_vods = len(videos)
+    successful_vods = 0
+    skipped_vods = 0
+    failed_vods = 0
+    all_export_paths = []
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Compute EDL offset for Resolve (like run_manual_fetch)
+    edl_offset_seconds = 0
+    if config.resolve_offset_enabled:
+        try:
+            edl_offset_seconds = timecode_to_seconds(config.resolve_offset_timecode)
+        except (ValueError, AttributeError):
+            logger.warning("Invalid resolve_offset_timecode, using default offset")
+            edl_offset_seconds = DEFAULT_OFFSET_SECONDS
+    
+    for idx, video in enumerate(videos, start=1):
+        logger.info("Multi-fetch: processing VOD %d/%d (id=%s)", idx, total_vods, video.video_id[:8])
+        
+        try:
+            marker_videos = get_stream_markers(
+                http_client=http_client,
+                config=config,
+                access_token=access_token,
+                video_id=video.video_id,
+                logger=logger,
+            )
+            
+            all_markers = []
+            for mv in marker_videos:
+                all_markers.extend(mv.markers)
+            
+            if not all_markers:
+                logger.info("Multi-fetch: VOD %s has no markers, skipping", video.video_id[:8])
+                skipped_vods += 1
+                continue
+            
+            logger.info("Multi-fetch: VOD %s has %d markers", video.video_id[:8], len(all_markers))
+            
+            stream_date_str = video.created_at.strftime("%Y-%m-%d")
+            unique_title = f"{video.title}" if video.title else f"VOD-{video.video_id[:8]}"
+            
+            vod_exported_any = False
+            
+            if "csv" in export_formats:
+                try:
+                    csv_path = export_markers_csv(
+                        markers=all_markers,
+                        output_path=output_dir,
+                        config=config,
+                        video_id=video.video_id,
+                        stream_title=unique_title,
+                        stream_date=stream_date_str,
+                        logger=logger,
+                    )
+                    all_export_paths.append(csv_path)
+                    vod_exported_any = True
+                    logger.info("Multi-fetch: exported CSV for VOD %s", video.video_id[:8])
+                except Exception as e:
+                    logger.error("Multi-fetch: CSV export failed for VOD %s: %s", video.video_id[:8], type(e).__name__)
+            
+            if "edl" in export_formats:
+                try:
+                    edl_path = export_markers_edl(
+                        markers=all_markers,
+                        output_path=output_dir,
+                        config=config,
+                        video_id=video.video_id,
+                        stream_title=unique_title,
+                        stream_date=stream_date_str,
+                        timecode_offset_seconds=edl_offset_seconds,
+                        logger=logger,
+                    )
+                    all_export_paths.append(edl_path)
+                    vod_exported_any = True
+                    logger.info("Multi-fetch: exported EDL for VOD %s", video.video_id[:8])
+                except Exception as e:
+                    logger.error("Multi-fetch: EDL export failed for VOD %s: %s", video.video_id[:8], type(e).__name__)
+            
+            # Only count as successful if at least one export succeeded
+            if vod_exported_any:
+                successful_vods += 1
+            else:
+                failed_vods += 1
+        
+        except MarkersNotFoundError:
+            logger.info("Multi-fetch: no markers found for VOD %s", video.video_id[:8])
+            skipped_vods += 1
+            continue
+        except MarkersAuthError:
+            logger.error("Multi-fetch: auth error for VOD %s", video.video_id[:8])
+            failed_vods += 1
+            continue
+        except MarkersFetchError as e:
+            logger.error("Multi-fetch: failed to fetch markers for VOD %s: %s", video.video_id[:8], type(e).__name__)
+            failed_vods += 1
+            continue
+        except Exception as e:
+            logger.error("Multi-fetch: unexpected error for VOD %s: %s", video.video_id[:8], type(e).__name__)
+            failed_vods += 1
+            continue
+    
+    summary_parts = [f"Processed {total_vods} VODs:", f"{successful_vods} successful"]
+    if skipped_vods > 0:
+        summary_parts.append(f"{skipped_vods} skipped (no markers)")
+    if failed_vods > 0:
+        summary_parts.append(f"{failed_vods} failed")
+    summary_msg = ", ".join(summary_parts) + "."
+    logger.info("Multi-fetch complete: %s", summary_msg)
+    
+    return MultiFetchResult(success=True, message=summary_msg, total_vods=total_vods, successful_vods=successful_vods, skipped_vods=skipped_vods, failed_vods=failed_vods, export_paths=all_export_paths)
