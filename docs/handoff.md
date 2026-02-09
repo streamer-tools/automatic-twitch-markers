@@ -4,13 +4,13 @@
 **Automatic Twitch Markers** is a Windows "set-and-forget" tray agent for Twitch streamers. It automatically exports stream markers to CSV/EDL files when a broadcast ends, solving a limitation of tools like Streamer.bot that typically don't support obtaining/using the `channel:manage:broadcast` user-token scope required for marker fetching in this workflow.
 
 ## 2. Current Status
-- **Version**: 0.4.0 (Pre-Alpha)
+- **Version**: 0.5.0 (Pre-Alpha)
 - **Features Complete**:
   - OAuth 2.0 User Token flow (login, refresh, validate)
   - EventSub WebSocket (offline detection)
-  - Helix API integration (Get Stream Markers)
+  - Helix API integration (Get Stream Markers, Get Videos)
   - Exports: Twitch-format CSV and Resolve-compatible EDL with offsets
-  - Tray App: Manual fetch, config persistence, auto mode start/stop
+  - Tray App: Manual fetch, multi-fetch (date range), config persistence, auto mode start/stop
   - Windows Startup: Registry-based "Run" key integration
   - Packaging: PyInstaller build script for standalone exe
   - CI/CD: GitHub Actions for automated release builds
@@ -55,10 +55,13 @@ python -m twitch_marker_agent.cli auth-login
   - `agent_runner.py`: Async orchestrator for Auto Mode (EventSub + Markers).
   - `eventsub_ws.py`: WebSocket client handling `stream.offline`.
   - `twitch_oauth.py`: Token management.
+  - `videos_api.py`: Archived VOD listing via Helix Get Videos.
   - `export_*.py`: Export definition implementations.
 - **`src/twitch_marker_agent/app.py`**:
   - Main entrypoint for System Tray UI.
   - Manages `pystray.Icon`, menus, and threading.
+- **`src/twitch_marker_agent/ui/`**:
+  - `date_range_dialog.py`: Tkinter date range picker for multi-fetch.
 - **`src/twitch_marker_agent/platform/windows_startup.py`**:
   - Windows-specific registry integration (HKCU Run key).
 

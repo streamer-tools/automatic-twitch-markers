@@ -19,6 +19,15 @@ The **"Fetch Latest Stream Markers"** action allows you to manually export marke
 - Testing your setup
 - Exporting markers without running auto mode
 
+### Multi-Stream Fetch
+The **"Fetch Multiple Stream Markers"** action lets you export markers from multiple VODs within a date range:
+- Opens a date range dialog where you can select start and end dates
+- Fetches all archived VODs in the specified range (up to 60 days back)
+- Exports markers for each VOD that has them
+- Creates unique filenames by appending the video ID
+
+**Note:** Standard Twitch VOD retention is 7-14 days. Turbo/Partner accounts may have up to 60 days.
+
 ### Output Format Selection
 
 CSV markers are **always exported** (implicit, not shown in menu). You can optionally enable EDL export:

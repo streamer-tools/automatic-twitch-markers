@@ -90,6 +90,7 @@ python -m twitch_marker_agent.app
 The tray app provides:
 - **Auto Mode** - automatically export markers when your stream ends
 - **Fetch Latest Stream Markers** - manually fetch and export markers
+- **Fetch Multiple Stream Markers** - export markers from multiple VODs within a date range (up to 60 days back)
 - **Additional Output Format** → **EDL** - toggle EDL export (CSV always exported)
 - **Output Folder** - open or change export directory
 - **Start on Windows Login** - toggle automatic startup (Windows only)
@@ -121,6 +122,8 @@ For local development, copy `config.json` to `config.local.json` (gitignored) an
 
 The agent will request these scopes during OAuth:
 - `channel:manage:broadcast` - Required to read stream markers and manage broadcast settings (future-proofed for additional features)
+
+**Note:** Multi-stream fetch allows selecting dates within the past 60 days from today (inclusive). The actual availability of VODs depends on your channel's VOD retention settings (7-14 days for standard accounts, up to 60 days for channels with Turbo subscribers).
 
 ## Project Structure
 
@@ -217,6 +220,24 @@ The tray will include a folder picker to set the export destination:
 - Default falls back to `output_dir` from config.json
 
 ## Changelog
+
+### v0.5.0 (Unreleased)
+- **Multi-Stream Fetch Feature:**
+  - New tray menu item: "Fetch Multiple Stream Markers"
+  - Tkinter date range dialog for selecting start/end dates (up to 60 days back)
+  - New core module: `videos_api.py` for listing archived VODs via Helix Get Videos API
+  - `list_videos_in_date_range()` - cursor pagination with early-stop optimization for videos older than range
+  - `ArchivedVideo` dataclass with video_id, title, created_at, url
+  - New controller functions: `validate_date_range()` and `run_multi_fetch()`
+  - `MultiFetchResult` dataclass tracks total, successful, skipped, and failed VOD counts
+  - Multi-fetch exports one CSV/EDL set per VOD with unique filenames (appends video_id)
+  - Continues processing on individual failures, returns comprehensive summary
+  - UI package: `ui/date_range_dialog.py` with DateRangeDialog class
+  - Date validation: start ≤ end, end ≤ today, start ≥ today-60 days
+  - VOD retention note in README (7-14 days standard, up to 60 days with Turbo)
+  - Patch fix: aligned export function signatures with `export_csv.py`/`export_edl.py`
+  - Patch fix: uses same Resolve offset computation as manual fetch
+- **Tests:** All 318 tests passing (20 new tests for multi-fetch)
 
 ### v0.4.1 (Unreleased)
 - **Auto Mode Clean Shutdown:**
