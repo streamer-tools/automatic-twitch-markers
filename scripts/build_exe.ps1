@@ -49,6 +49,7 @@ pyinstaller `
     --collect-submodules pystray `
     --collect-submodules PIL `
     --hidden-import pystray._win32 `
+    --hidden-import ttkbootstrap `
     src\twitch_marker_agent\app.py
 
 if ($LASTEXITCODE -ne 0) {

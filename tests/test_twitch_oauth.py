@@ -600,7 +600,7 @@ class TestRefreshAccessToken(unittest.TestCase):
         with self.assertRaises(TokenRefreshError) as ctx:
             oauth.refresh_access_token()
 
-        self.assertIn("auth-login", str(ctx.exception))
+        self.assertIn("expired", str(ctx.exception).lower())
 
     def test_refresh_no_stored_token_raises(self) -> None:
         """Refresh without stored token should raise with auth-login message."""
@@ -679,6 +679,99 @@ class TestRefreshAccessToken(unittest.TestCase):
 
         self.assertEqual(sent_timeout, HTTP_TIMEOUT)
         self.assertEqual(sent_timeout, (10, 30))
+
+    def test_refresh_dcf_omits_client_secret(self) -> None:
+        """DCF tokens should NOT include client_secret in refresh request."""
+        from twitch_marker_agent.tray_controller import TOKEN_KEY_AUTH_METHOD
+
+        # Store tokens with DCF auth method
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "dcf_refresh")
+        self.state_store.store_token(TOKEN_KEY_AUTH_METHOD, "dcf")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_access",
+            "refresh_token": "rotated_refresh",
+            "expires_in": 3600,
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        oauth.refresh_access_token()
+
+        # Verify client_secret was NOT sent
+        call_args = self.mock_session.post.call_args
+        sent_data = call_args.kwargs.get("data", {})
+
+        self.assertNotIn("client_secret", sent_data)
+        self.assertEqual(sent_data["client_id"], "test_client_id")
+
+    def test_refresh_non_dcf_includes_client_secret(self) -> None:
+        """Non-DCF tokens should include client_secret in refresh request."""
+        # Store tokens without auth method (defaults to non-DCF)
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "regular_refresh")
+        # No TOKEN_KEY_AUTH_METHOD set
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_access",
+            "expires_in": 3600,
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        oauth.refresh_access_token()
+
+        # Verify client_secret WAS sent
+        call_args = self.mock_session.post.call_args
+        sent_data = call_args.kwargs.get("data", {})
+
+        self.assertEqual(sent_data["client_secret"], "test_client_secret")
+
+    def test_refresh_401_clears_all_tokens(self) -> None:
+        """Refresh 401 should clear all stored tokens."""
+        from twitch_marker_agent.core.twitch_oauth import TokenRefreshError
+        from twitch_marker_agent.tray_controller import TOKEN_KEY_AUTH_METHOD
+
+        # Store tokens
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_ACCESS, "old_access")
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "old_refresh")
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_EXPIRES, "2024-01-01T00:00:00+00:00")
+        self.state_store.store_token(TOKEN_KEY_AUTH_METHOD, "dcf")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        with self.assertRaises(TokenRefreshError):
+            oauth.refresh_access_token()
+
+        # Verify all tokens are cleared
+        self.assertIsNone(self.state_store.get_token(TwitchOAuth.TOKEN_KEY_ACCESS))
+        self.assertIsNone(self.state_store.get_token(TwitchOAuth.TOKEN_KEY_REFRESH))
+        self.assertIsNone(self.state_store.get_token(TwitchOAuth.TOKEN_KEY_EXPIRES))
+        self.assertIsNone(self.state_store.get_token(TOKEN_KEY_AUTH_METHOD))
 
 
 class TestValidateAccessToken(unittest.TestCase):

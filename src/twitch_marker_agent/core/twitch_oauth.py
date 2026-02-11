@@ -588,12 +588,22 @@ class TwitchOAuth:
                 "No refresh token available. Run 'auth-login' to authenticate."
             )
 
+        # Check auth method to determine if client_secret should be sent
+        # DCF (Device Code Flow) tokens do not require client_secret
+        from twitch_marker_agent.tray_controller import TOKEN_KEY_AUTH_METHOD
+
+        auth_method = self._state_store.get_token(TOKEN_KEY_AUTH_METHOD)
+        is_dcf = auth_method == "dcf"
+
         data = {
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
             "client_id": self._config.client_id,
-            "client_secret": self._config.client_secret,
         }
+
+        # Only include client_secret for non-DCF (authorization_code) flow
+        if not is_dcf and self._config.client_secret:
+            data["client_secret"] = self._config.client_secret
 
         try:
             response = self._http_session.post(
@@ -606,10 +616,15 @@ class TwitchOAuth:
             raise TokenRefreshError(f"Network error during token refresh: {e}") from e
 
         if response.status_code == 401:
-            # Refresh token is invalid/expired - user must re-authenticate
+            # Refresh token is invalid/expired - clear tokens and require re-auth
             self._logger.error("Refresh token is invalid or expired")
+            # Clear tokens so user is prompted to re-authenticate
+            self._state_store.delete_token(self.TOKEN_KEY_ACCESS)
+            self._state_store.delete_token(self.TOKEN_KEY_REFRESH)
+            self._state_store.delete_token(self.TOKEN_KEY_EXPIRES)
+            self._state_store.delete_token(TOKEN_KEY_AUTH_METHOD)
             raise TokenRefreshError(
-                "Refresh token is invalid or expired. Run 'auth-login' to re-authenticate."
+                "Session expired. Please authenticate with Twitch again."
             )
 
         if response.status_code != 200:
@@ -646,6 +661,7 @@ class TwitchOAuth:
         self._state_store.store_token(self.TOKEN_KEY_ACCESS, access_token)
 
         # Only update refresh token if a new one is provided (rotation safety)
+        # DCF uses single-use refresh tokens, so this is critical
         if new_refresh_token:
             self._state_store.store_token(self.TOKEN_KEY_REFRESH, new_refresh_token)
             self._logger.debug("Refresh token rotated")
