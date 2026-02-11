@@ -71,6 +71,7 @@ During scaffold development, modules are implemented incrementally:
 
 **Implemented:**
 - OAuth login flow (`twitch_oauth.py` - `interactive_login`, `auth-login` CLI)
+- Device Code Flow auth (`core/device_auth.py`, `ui/device_auth_dialog.py`)
 - Token maintenance (`twitch_oauth.py` - `refresh_access_token`, `validate_access_token`, `get_valid_user_access_token`)
 - Configuration loading (`config.py`)
 - State storage (`state_store.py`)
@@ -83,9 +84,10 @@ During scaffold development, modules are implemented incrementally:
 - CSV Export (`export_csv.py` - `export_markers_csv`)
 - EDL Export (`export_edl.py` - `export_markers_edl`, `timecode_to_seconds`, config-driven offset)
 - Tray App UI (`app.py` - `run_tray_app`, manual fetch, multi-fetch, format toggles, folder picker, auto mode start/stop)
-- Tray Controller (`tray_controller.py` - `resolve_output_dir`, `set_output_dir`, `run_manual_fetch`, `run_multi_fetch`, `start_auto_mode`, `stop_auto_mode`)
+- Tray Controller (`tray_controller.py` - `resolve_output_dir`, `set_output_dir`, `run_manual_fetch`, `run_multi_fetch`, `start_auto_mode`, `stop_auto_mode`, device auth functions)
 - Agent Runner (`agent_runner.py` - async EventSub orchestrator with connect/subscribe/dispatch)
 - Date Range Dialog (`ui/date_range_dialog.py` - `DateRangeDialog` tkinter modal)
+- Device Auth Dialog (`ui/device_auth_dialog.py` - `DeviceAuthDialog` tkinter modal)
 
 **Still Stubbed:**
 - Legacy orchestrator (`core/agent.py`): Superseded by `agent_runner.py`
@@ -99,6 +101,17 @@ During scaffold development, modules are implemented incrementally:
 3. **Paths**: Use `pathlib.Path` for all file system paths
 4. **Logging**: Use `logging` stdlib, inject logger instances
 5. **Testing**: Use `unittest` stdlib only (no pytest)
+
+### Approved Dependencies
+
+Minimize dependencies. Only add new dependencies when explicitly approved.
+
+**Currently Approved:**
+- `requests` - HTTP client
+- `websockets` - EventSub WebSocket
+- `pystray` - System tray integration
+- `Pillow` - Tray icon image support
+- `ttkbootstrap` - Modern ttk themes and DateEntry widget for multi-fetch dialog
 
 ## Commands
 

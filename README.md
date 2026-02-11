@@ -90,10 +90,12 @@ python -m twitch_marker_agent.app
 The tray app provides:
 - **Auto Mode** - automatically export markers when your stream ends
 - **Fetch Latest Stream Markers** - manually fetch and export markers
-- **Fetch Multiple Stream Markers** - export markers from multiple VODs within a date range (up to 60 days back)
+- **Fetch Multiple Stream Markers** - export markers from multiple VODs within a date range (up to 60 days back) using a calendar date picker with preset buttons
 - **Additional Output Format** → **EDL** - toggle EDL export (CSV always exported)
 - **Output Folder** - open or change export directory
 - **Start on Windows Login** - toggle automatic startup (Windows only)
+
+> **Note:** Fetch and Auto Mode actions are disabled until you authenticate with Twitch. Other settings (output folder, EDL toggle, startup) remain accessible.
 
 **Building executable**: See [docs/packaging.md](docs/packaging.md) for instructions on creating a standalone Windows exe.
 
@@ -161,7 +163,7 @@ automatic-twitch-markers/
 └── tests/                     # Unit tests (290 tests, all passing)
 ```
 
-## Next Implementation Steps
+## Core Implementation Steps (Completed)
 
 1. [x] Implement OAuth browser flow in `twitch_oauth.py`
 2. [x] Implement token refresh logic
@@ -175,6 +177,12 @@ automatic-twitch-markers/
 10. [x] Add Windows startup integration
 11. [x] Package as Windows exe (PyInstaller)
 12. [x] Setup CI/CD for releases (GitHub Actions)
+
+### Newly Added Features
+13. [x] Add a "Fetch Multiple Stream Markers" button to the tray app
+14. [x] Implement OAuth Device Code Grant Flow (get rid of secret requirement)
+15. [ ] Refactor "Fetch Multiple Stream Markers" button to use tkcalendar for date selection
+16. [ ] Add quick select options for last 7, 14, 30, 60 days
 
 ## Export Formats
 
@@ -224,7 +232,9 @@ The tray will include a folder picker to set the export destination:
 ### v0.5.0 (Unreleased)
 - **Multi-Stream Fetch Feature:**
   - New tray menu item: "Fetch Multiple Stream Markers"
-  - Tkinter date range dialog for selecting start/end dates (up to 60 days back)
+  - Modern calendar date picker (ttkbootstrap.DateEntry) with styled appearance
+  - Custom date range validation (last 60 days from today)
+  - Preset buttons: Last 7 / 14 / 30 / 60 days for quick selection
   - New core module: `videos_api.py` for listing archived VODs via Helix Get Videos API
   - `list_videos_in_date_range()` - cursor pagination with early-stop optimization for videos older than range
   - `ArchivedVideo` dataclass with video_id, title, created_at, url
@@ -237,7 +247,23 @@ The tray will include a folder picker to set the export destination:
   - VOD retention note in README (7-14 days standard, up to 60 days with Turbo)
   - Patch fix: aligned export function signatures with `export_csv.py`/`export_edl.py`
   - Patch fix: uses same Resolve offset computation as manual fetch
-- **Tests:** All 318 tests passing (20 new tests for multi-fetch)
+- **Device Code Flow Authentication:**
+  - New auth dialog: auto-copies code to clipboard on open
+  - Auto-opens browser to Twitch authorization page
+  - Uses `verification_uri_complete` when available (pre-fills user code)
+  - Success notification when authentication completes
+- **Menu Gating:**
+  - Fetch and Auto Mode actions disabled when unauthenticated
+  - Clear visual feedback for auth-required actions
+  - Output folder, EDL toggle, Windows login remain always accessible
+- **Date Picker Migration:**
+  - Replaced tkcalendar with ttkbootstrap DateEntry to fix month navigation bugs
+  - Applied modern "flatly" theme to date range dialog
+  - Implemented custom validation helpers (no mindate/maxdate in ttkbootstrap)
+  - Pure validation functions: `compute_allowed_window()`, `validate_date_in_range()`, `validate_date_range_order()`
+  - Removed tkcalendar and babel build dependencies
+- **Dependency:** Added `ttkbootstrap>=1.5.0,<2.0` for modern ttk themes and DateEntry widget
+- **Tests:** All 380+ tests passing (15 new date validation tests)
 
 ### v0.4.1 (Unreleased)
 - **Auto Mode Clean Shutdown:**

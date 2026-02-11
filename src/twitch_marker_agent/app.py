@@ -27,10 +27,15 @@ import pystray
 from PIL import Image, ImageDraw
 
 from twitch_marker_agent.tray_controller import (
+    AuthStatus,
     AutoModeState,
+    DeviceAuthState,
     ManualFetchResult,
     MultiFetchResult,
     TrayState,
+    complete_device_auth_flow,
+    disconnect_twitch,
+    get_auth_status,
     get_edl_enabled,
     get_manual_fetch_formats,
     resolve_output_dir,
@@ -39,6 +44,7 @@ from twitch_marker_agent.tray_controller import (
     set_edl_enabled,
     set_output_dir,
     start_auto_mode,
+    start_device_auth_flow,
     stop_auto_mode,
 )
 
@@ -119,6 +125,12 @@ def create_tray_menu(
     on_stop_auto: Callable[[], None],
     on_toggle_startup: Callable[[], None],
     on_exit: Callable[[], None],
+    *,
+    # Device auth callbacks (with defaults for backwards compatibility)
+    on_auth: Callable[[], None] | None = None,
+    on_disconnect: Callable[[], None] | None = None,
+    auth_status: AuthStatus | None = None,
+    device_auth_state: DeviceAuthState | None = None,
 ) -> pystray.Menu:
     """
     Build tray context menu.
@@ -135,6 +147,10 @@ def create_tray_menu(
         on_stop_auto: Callback to stop auto mode.
         on_toggle_startup: Callback to toggle Windows startup.
         on_exit: Callback to exit app.
+        on_auth: Callback for authenticate action.
+        on_disconnect: Callback for disconnect action.
+        auth_status: Current authentication status.
+        device_auth_state: Current device auth state.
 
     Returns:
         pystray Menu object.
@@ -146,7 +162,13 @@ def create_tray_menu(
         return "Fetch Latest Stream Markers"
 
     def is_fetch_enabled(_: pystray.MenuItem) -> bool:
-        return not state.is_fetching
+        """Fetch enabled only if authenticated and not currently fetching."""
+        is_auth = auth_status is not None and auth_status.is_authenticated
+        return is_auth and not state.is_fetching
+
+    def is_auto_mode_enabled(_: pystray.MenuItem) -> bool:
+        """Auto mode controls enabled only if authenticated."""
+        return auth_status is not None and auth_status.is_authenticated
 
     def get_auto_status(_: pystray.MenuItem) -> str:
         # Derive running state from actual thread status
@@ -167,17 +189,59 @@ def create_tray_menu(
         # Running only if thread exists and is alive
         return auto_state.thread is not None and auto_state.thread.is_alive()
 
+    # Auth status helpers
+    def get_auth_status_text(_: pystray.MenuItem) -> str:
+        if auth_status and auth_status.is_authenticated:
+            name = auth_status.display_name or "(unknown)"
+            return f"✓ Connected as {name}"
+        return "⚠ Not authenticated"
+
+    def is_authenticated(_: pystray.MenuItem) -> bool:
+        return auth_status is not None and auth_status.is_authenticated
+
+    def is_not_authenticated(_: pystray.MenuItem) -> bool:
+        return auth_status is None or not auth_status.is_authenticated
+
+    def is_auth_pending(_: pystray.MenuItem) -> bool:
+        return device_auth_state is not None and device_auth_state.is_pending
+
+    def is_auth_available(_: pystray.MenuItem) -> bool:
+        # Auth available if not authenticated and not currently pending
+        not_auth = auth_status is None or not auth_status.is_authenticated
+        not_pending = device_auth_state is None or not device_auth_state.is_pending
+        return not_auth and not_pending and on_auth is not None
+
     return pystray.Menu(
-        # Auto mode section
+        # Auth status section (at top)
+        pystray.MenuItem(
+            get_auth_status_text,
+            None,
+            enabled=False,
+        ),
+        pystray.MenuItem(
+            "Authenticate with Twitch…",
+            on_auth or (lambda: None),
+            visible=is_not_authenticated,
+            enabled=lambda _: not is_auth_pending(None),
+        ),
+        pystray.MenuItem(
+            "Disconnect Twitch",
+            on_disconnect or (lambda: None),
+            visible=is_authenticated,
+        ),
+        pystray.Menu.SEPARATOR,
+        # Auto mode section (disabled when unauthenticated)
         pystray.MenuItem(
             "Start Auto Mode",
             on_start_auto,
             visible=is_auto_stopped,
+            enabled=is_auto_mode_enabled,
         ),
         pystray.MenuItem(
             "Stop Auto Mode",
             on_stop_auto,
             visible=is_auto_running,
+            enabled=is_auto_mode_enabled,
         ),
         pystray.MenuItem(
             get_auto_status,
@@ -310,6 +374,11 @@ def run_tray_app(
     # Initialize state
     state = TrayState()
     auto_state = AutoModeState()
+    device_auth_state = DeviceAuthState()
+    cached_auth_status: AuthStatus | None = None
+
+    # Default scopes for DCF auth
+    DEFAULT_SCOPES = ["channel:manage:broadcast"]
 
     # Create AgentRunner (lazy, but we hold reference for start/stop)
     from twitch_marker_agent.core.agent_runner import AgentRunner
@@ -323,6 +392,15 @@ def run_tray_app(
     )
 
     icon: pystray.Icon | None = None
+
+    def refresh_auth_status() -> None:
+        """Refresh cached auth status from state store."""
+        nonlocal cached_auth_status
+        cached_auth_status = get_auth_status(
+            state_store=state_store,
+            http_client=http_client,
+            logger=logger,
+        )
 
     def update_menu() -> None:
         """Rebuild and update the menu."""
@@ -341,6 +419,10 @@ def run_tray_app(
                 on_stop_auto=on_stop_auto,
                 on_toggle_startup=on_toggle_startup,
                 on_exit=on_exit,
+                on_auth=on_auth,
+                on_disconnect=on_disconnect,
+                auth_status=cached_auth_status,
+                device_auth_state=device_auth_state,
             )
             icon.update_menu()
 
@@ -559,6 +641,173 @@ def run_tray_app(
 
         update_menu()
 
+    def on_auth() -> None:
+        """Handle authenticate with Twitch action."""
+        nonlocal device_auth_state, cached_auth_status
+
+        if device_auth_state.is_pending:
+            return
+
+        # Get client_id from config (with optional env var override)
+        import os
+        client_id = os.environ.get("TWITCH_MARKER_AGENT_CLIENT_ID", config.client_id)
+
+        if not client_id or client_id == "your_client_id_here":
+            logger.error("Device auth: no valid client_id configured")
+            if icon:
+                try:
+                    icon.notify("Configure client_id in config.json first", "Auth Error")
+                except Exception:
+                    pass
+            return
+
+        try:
+            # Request device code
+            from twitch_marker_agent.core.device_auth import (
+                DeviceAuthError,
+                DeviceAuthCancelledError,
+                DeviceCodeExpiredError,
+                DeviceAuthDeniedError,
+            )
+
+            device_response = start_device_auth_flow(
+                client_id=client_id,
+                scopes=DEFAULT_SCOPES,
+                http_client=http_client,
+                logger=logger,
+            )
+
+            # Update state
+            device_auth_state.is_pending = True
+            device_auth_state.cancel_event = threading.Event()
+            device_auth_state.user_code = device_response.user_code
+            device_auth_state.verification_uri = device_response.verification_uri
+            update_menu()
+
+            # Show dialog and start polling in background
+            from twitch_marker_agent.ui.device_auth_dialog import DeviceAuthDialog
+
+            def on_cancel() -> None:
+                """Handle cancel from dialog."""
+                if device_auth_state.cancel_event:
+                    device_auth_state.cancel_event.set()
+
+            # Create polling thread
+            poll_result: AuthStatus | None = None
+            poll_error: str | None = None
+
+            def poll_worker() -> None:
+                """Background worker to poll for token."""
+                nonlocal poll_result, poll_error
+                try:
+                    poll_result = complete_device_auth_flow(
+                        client_id=client_id,
+                        device_code=device_response.device_code,
+                        scopes=DEFAULT_SCOPES,
+                        interval=device_response.interval,
+                        timeout_seconds=device_response.expires_in,
+                        state_store=state_store,
+                        http_client=http_client,
+                        logger=logger,
+                        cancel_event=device_auth_state.cancel_event,
+                    )
+                    # Success - close dialog
+                    if dialog:
+                        dialog.close_success()
+                except DeviceAuthCancelledError:
+                    poll_error = "cancelled"
+                except DeviceCodeExpiredError:
+                    poll_error = "Code expired. Please try again."
+                    if dialog:
+                        dialog.close_error(poll_error)
+                except DeviceAuthDeniedError:
+                    poll_error = "Authorization denied."
+                    if dialog:
+                        dialog.close_error(poll_error)
+                except DeviceAuthError as e:
+                    poll_error = str(e)
+                    if dialog:
+                        dialog.close_error(poll_error)
+                except Exception as e:
+                    poll_error = f"Authentication failed: {type(e).__name__}"
+                    if dialog:
+                        dialog.close_error(poll_error)
+
+            # Start polling thread
+            poll_thread = threading.Thread(target=poll_worker, daemon=True)
+            poll_thread.start()
+
+            # Show dialog (blocks until closed)
+            dialog = DeviceAuthDialog(
+                parent=None,
+                user_code=device_response.user_code,
+                verification_uri=device_response.verification_uri,
+                verification_uri_complete=device_response.verification_uri_complete,
+                expires_in=device_response.expires_in,
+                on_cancel=on_cancel,
+                auto_open_browser=True,
+                auto_copy_code=True,
+            )
+            dialog.show()
+
+            # Wait for poll thread to finish
+            poll_thread.join(timeout=2.0)
+
+            # Handle result
+            if poll_result:
+                cached_auth_status = poll_result
+                logger.info("Device auth completed successfully")
+                if icon:
+                    try:
+                        name = poll_result.display_name or "Twitch"
+                        icon.notify(f"Connected as {name}", "Authentication Successful")
+                    except Exception:
+                        pass
+            elif poll_error and poll_error != "cancelled":
+                logger.warning("Device auth failed: %s", poll_error)
+                if icon:
+                    try:
+                        icon.notify(poll_error, "Authentication Failed")
+                    except Exception:
+                        pass
+
+        except DeviceAuthError as e:
+            logger.error("Device auth failed: %s", str(e))
+            if icon:
+                try:
+                    icon.notify(str(e), "Authentication Failed")
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error("Device auth unexpected error: %s", type(e).__name__)
+        finally:
+            # Reset state
+            device_auth_state.is_pending = False
+            device_auth_state.cancel_event = None
+            device_auth_state.user_code = None
+            device_auth_state.verification_uri = None
+            update_menu()
+
+    def on_disconnect() -> None:
+        """Handle disconnect Twitch action."""
+        nonlocal cached_auth_status
+
+        disconnect_twitch(
+            state_store=state_store,
+            logger=logger,
+        )
+        cached_auth_status = AuthStatus(is_authenticated=False)
+        update_menu()
+
+        if icon:
+            try:
+                icon.notify("Disconnected from Twitch", "Twitch Markers")
+            except Exception:
+                pass
+
+    # Initialize auth status
+    refresh_auth_status()
+
     # Create and run icon
     icon = pystray.Icon(
         name="twitch-marker-agent",
@@ -577,6 +826,10 @@ def run_tray_app(
             on_stop_auto=on_stop_auto,
             on_toggle_startup=on_toggle_startup,
             on_exit=on_exit,
+            on_auth=on_auth,
+            on_disconnect=on_disconnect,
+            auth_status=cached_auth_status,
+            device_auth_state=device_auth_state,
         ),
     )
 

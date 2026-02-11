@@ -85,6 +85,29 @@ class AutoModeState:
     last_error: str | None = None
 
 
+@dataclass
+class DeviceAuthState:
+    """Mutable state for device auth flow."""
+
+    is_pending: bool = False
+    cancel_event: threading.Event | None = None
+    user_code: str | None = None
+    verification_uri: str | None = None
+
+
+@dataclass
+class AuthStatus:
+    """Current authentication status."""
+
+    is_authenticated: bool
+    display_name: str | None = None
+    user_id: str | None = None
+
+
+# Token storage key for auth method tracking
+TOKEN_KEY_AUTH_METHOD = "twitch_auth_method"
+
+
 # =============================================================================
 # Output Directory Functions
 # =============================================================================
@@ -743,3 +766,198 @@ def run_multi_fetch(
     logger.info("Multi-fetch complete: %s", summary_msg)
     
     return MultiFetchResult(success=True, message=summary_msg, total_vods=total_vods, successful_vods=successful_vods, skipped_vods=skipped_vods, failed_vods=failed_vods, export_paths=all_export_paths)
+
+
+# =============================================================================
+# Device Code Flow Auth Functions
+# =============================================================================
+
+
+def get_auth_status(
+    state_store: "StateStore",
+    http_client: "requests.Session",
+    logger: logging.Logger,
+    cached_display_name: str | None = None,
+) -> AuthStatus:
+    """
+    Get current authentication status for menu display.
+
+    Checks for valid stored token. If a cached display_name is provided,
+    uses that instead of making a network call.
+
+    Args:
+        state_store: State storage.
+        http_client: HTTP session.
+        logger: Logger instance.
+        cached_display_name: Optional cached display name to avoid network call.
+
+    Returns:
+        AuthStatus with is_authenticated and display_name.
+    """
+    from twitch_marker_agent.core.twitch_oauth import TwitchOAuth, TWITCH_VALIDATE_URL
+
+    # Check if we have a stored access token
+    access_token = state_store.get_token(TwitchOAuth.TOKEN_KEY_ACCESS)
+
+    if not access_token:
+        return AuthStatus(is_authenticated=False)
+
+    # If we have a cached display name, use it
+    if cached_display_name:
+        return AuthStatus(
+            is_authenticated=True,
+            display_name=cached_display_name,
+        )
+
+    # Validate token and get user info
+    try:
+        response = http_client.get(
+            TWITCH_VALIDATE_URL,
+            headers={"Authorization": f"OAuth {access_token}"},
+            timeout=(5, 10),
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            return AuthStatus(
+                is_authenticated=True,
+                display_name=data.get("login"),
+                user_id=data.get("user_id"),
+            )
+        else:
+            # Token invalid
+            logger.debug("Token validation failed: HTTP %d", response.status_code)
+            return AuthStatus(is_authenticated=False)
+
+    except Exception as e:
+        # Network error - assume still authenticated if we have a token
+        logger.debug("Token validation error: %s", type(e).__name__)
+        return AuthStatus(is_authenticated=True, display_name="(unknown)")
+
+
+def start_device_auth_flow(
+    client_id: str,
+    scopes: list[str],
+    http_client: "requests.Session",
+    logger: logging.Logger,
+) -> "DeviceCodeResponse":
+    """
+    Start device auth flow by requesting device code.
+
+    Args:
+        client_id: Twitch application client ID.
+        scopes: OAuth scopes to request.
+        http_client: HTTP session.
+        logger: Logger instance.
+
+    Returns:
+        DeviceCodeResponse with user_code, verification_uri, etc.
+
+    Raises:
+        DeviceAuthError: On network or API errors.
+    """
+    from twitch_marker_agent.core.device_auth import request_device_code
+
+    return request_device_code(
+        client_id=client_id,
+        scopes=scopes,
+        http_client=http_client,
+        logger=logger,
+    )
+
+
+def complete_device_auth_flow(
+    client_id: str,
+    device_code: str,
+    scopes: list[str],
+    interval: int,
+    timeout_seconds: int,
+    state_store: "StateStore",
+    http_client: "requests.Session",
+    logger: logging.Logger,
+    cancel_event: threading.Event,
+) -> AuthStatus:
+    """
+    Poll for token and store on success.
+
+    Runs in background thread. Stores tokens in StateStore using
+    existing token keys, plus auth_method = "dcf".
+
+    Args:
+        client_id: Twitch application client ID.
+        device_code: Device code from start_device_auth_flow.
+        scopes: OAuth scopes requested.
+        interval: Polling interval in seconds.
+        timeout_seconds: Maximum time to poll.
+        state_store: State storage for tokens.
+        http_client: HTTP session.
+        logger: Logger instance.
+        cancel_event: Event to signal cancellation.
+
+    Returns:
+        AuthStatus on success.
+
+    Raises:
+        DeviceAuthError subclasses on failure.
+    """
+    from twitch_marker_agent.core.device_auth import poll_for_device_token
+    from twitch_marker_agent.core.twitch_oauth import TwitchOAuth, compute_expires_at
+
+    # Poll for token
+    token_response = poll_for_device_token(
+        client_id=client_id,
+        device_code=device_code,
+        scopes=scopes,
+        interval=interval,
+        timeout_seconds=timeout_seconds,
+        http_client=http_client,
+        logger=logger,
+        cancel_event=cancel_event,
+    )
+
+    # Store tokens
+    state_store.store_token(TwitchOAuth.TOKEN_KEY_ACCESS, token_response.access_token)
+
+    if token_response.refresh_token:
+        state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, token_response.refresh_token)
+
+    if token_response.expires_in > 0:
+        expires_at = compute_expires_at(token_response.expires_in)
+        state_store.store_token(TwitchOAuth.TOKEN_KEY_EXPIRES, expires_at)
+
+    # Store auth method as "dcf" (Device Code Flow)
+    state_store.store_token(TOKEN_KEY_AUTH_METHOD, "dcf")
+
+    logger.info("Device auth tokens stored successfully")
+
+    # Get user info for display
+    return get_auth_status(state_store, http_client, logger)
+
+
+def disconnect_twitch(
+    state_store: "StateStore",
+    logger: logging.Logger,
+) -> None:
+    """
+    Clear stored tokens and auth status.
+
+    Clears:
+    - twitch_access_token
+    - twitch_refresh_token
+    - twitch_token_expires_at
+    - twitch_auth_method
+
+    Args:
+        state_store: State storage.
+        logger: Logger instance.
+    """
+    from twitch_marker_agent.core.twitch_oauth import TwitchOAuth
+
+    # Clear all token-related keys
+    state_store.delete_token(TwitchOAuth.TOKEN_KEY_ACCESS)
+    state_store.delete_token(TwitchOAuth.TOKEN_KEY_REFRESH)
+    state_store.delete_token(TwitchOAuth.TOKEN_KEY_EXPIRES)
+    state_store.delete_token(TOKEN_KEY_AUTH_METHOD)
+
+    logger.info("Twitch tokens cleared")
+
