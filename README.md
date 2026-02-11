@@ -229,7 +229,7 @@ The tray will include a folder picker to set the export destination:
 
 ## Changelog
 
-### v0.6.0 (2026-02-11)
+### v0.7.0 (2026-02-11)
 - **Date Picker Migration:**
   - Replaced tkcalendar with ttkbootstrap DateEntry to fix month navigation bugs
   - Default date range dialog theme set to "superhero" for multi-fetch (via `DateRangeDialogStyle` in `app.py`)
@@ -242,7 +242,19 @@ The tray will include a folder picker to set the export destination:
 - **Dependency:** Added `ttkbootstrap>=1.5.0,<2.0` for modern ttk themes and DateEntry widget
 - **Tests:** All tests passing (stdlib unittest)
 
-### v0.5.0 (2026-02-10)
+### v0.6.0 (2026-02-10)
+- **Device Code Flow Authentication:**
+  - New auth dialog: auto-copies code to clipboard on open
+  - Auto-opens browser to Twitch authorization page
+  - Uses `verification_uri_complete` when available (pre-fills user code)
+  - Success notification when authentication completes
+- **Menu Gating:**
+  - Fetch and Auto Mode actions disabled when unauthenticated
+  - Clear visual feedback for auth-required actions
+  - Output folder, EDL toggle, Windows login remain always accessible
+- **Tests:** All tests passing (stdlib unittest)
+
+### v0.5.0 (2026-02-09)
 - **Multi-Stream Fetch Feature:**
   - New tray menu item: "Fetch Multiple Stream Markers"
   - Modern calendar date picker (ttkbootstrap.DateEntry) with styled appearance
@@ -260,18 +272,9 @@ The tray will include a folder picker to set the export destination:
   - VOD retention note in README (7-14 days standard, up to 60 days with Turbo)
   - Patch fix: aligned export function signatures with `export_csv.py`/`export_edl.py`
   - Patch fix: uses same Resolve offset computation as manual fetch
-- **Device Code Flow Authentication:**
-  - New auth dialog: auto-copies code to clipboard on open
-  - Auto-opens browser to Twitch authorization page
-  - Uses `verification_uri_complete` when available (pre-fills user code)
-  - Success notification when authentication completes
-- **Menu Gating:**
-  - Fetch and Auto Mode actions disabled when unauthenticated
-  - Clear visual feedback for auth-required actions
-  - Output folder, EDL toggle, Windows login remain always accessible
 - **Tests:** All tests passing (stdlib unittest)
 
-### v0.4.1 (2026-02-09)
+### v0.4.1 (2026-02-08)
 - **Auto Mode Clean Shutdown:**
   - Fixed shutdown hang by adding stop-aware wait in `AgentRunner.run_async()`
   - Added stop_task to wait list for immediate response to stop requests
