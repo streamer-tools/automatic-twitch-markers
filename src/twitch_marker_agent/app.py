@@ -481,9 +481,9 @@ def run_tray_app(
             return
 
         # Show date range dialog
-        from twitch_marker_agent.ui.date_range_dialog import DateRangeDialog
+        from twitch_marker_agent.ui.date_range_dialog import DateRangeDialog, DateRangeDialogStyle
 
-        dialog = DateRangeDialog(max_days_back=60)
+        dialog = DateRangeDialog(max_days_back=60, style=DateRangeDialogStyle(theme="superhero"))
         date_range = dialog.show()
 
         if date_range is None:

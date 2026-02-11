@@ -160,7 +160,7 @@ automatic-twitch-markers/
 │   ├── platform/              # Platform-specific features
 │   │   └── windows_startup.py # Windows startup integration (HKCU Run key)
 │   └── integrations/          # External tool integrations (future)
-└── tests/                     # Unit tests (290 tests, all passing)
+└── tests/                     # Unit tests (stdlib unittest)
 ```
 
 ## Core Implementation Steps (Completed)
@@ -229,7 +229,20 @@ The tray will include a folder picker to set the export destination:
 
 ## Changelog
 
-### v0.5.0 (Unreleased)
+### v0.6.0 (2026-02-11)
+- **Date Picker Migration:**
+  - Replaced tkcalendar with ttkbootstrap DateEntry to fix month navigation bugs
+  - Default date range dialog theme set to "superhero" for multi-fetch (via `DateRangeDialogStyle` in `app.py`)
+  - Implemented custom validation helpers (no mindate/maxdate in ttkbootstrap)
+  - Pure validation functions: `compute_allowed_window()`, `validate_date_in_range()`, `validate_date_range_order()`
+  - Switched date range dialog to pseudo-modal behavior to avoid DateEntry popup grab/focus conflicts
+  - Added `DateRangeDialogStyle` hooks for dialog-level theme and widget bootstyle customization
+  - Fixed close/reopen bgerror ("application has been destroyed") and styling break by reusing a shared hidden Tk root and canceling pending idle callbacks
+  - Removed tkcalendar and babel build dependencies
+- **Dependency:** Added `ttkbootstrap>=1.5.0,<2.0` for modern ttk themes and DateEntry widget
+- **Tests:** All tests passing (stdlib unittest)
+
+### v0.5.0 (2026-02-10)
 - **Multi-Stream Fetch Feature:**
   - New tray menu item: "Fetch Multiple Stream Markers"
   - Modern calendar date picker (ttkbootstrap.DateEntry) with styled appearance
@@ -256,18 +269,9 @@ The tray will include a folder picker to set the export destination:
   - Fetch and Auto Mode actions disabled when unauthenticated
   - Clear visual feedback for auth-required actions
   - Output folder, EDL toggle, Windows login remain always accessible
-- **Date Picker Migration:**
-  - Replaced tkcalendar with ttkbootstrap DateEntry to fix month navigation bugs
-  - Applied modern "flatly" theme to date range dialog
-  - Implemented custom validation helpers (no mindate/maxdate in ttkbootstrap)
-  - Pure validation functions: `compute_allowed_window()`, `validate_date_in_range()`, `validate_date_range_order()`
-  - Switched date range dialog to pseudo-modal behavior to avoid DateEntry popup grab/focus conflicts
-  - Added `DateRangeDialogStyle` hooks for dialog-level theme and widget bootstyle customization
-  - Removed tkcalendar and babel build dependencies
-- **Dependency:** Added `ttkbootstrap>=1.5.0,<2.0` for modern ttk themes and DateEntry widget
-- **Tests:** All 380+ tests passing (15 new date validation tests)
+- **Tests:** All tests passing (stdlib unittest)
 
-### v0.4.1 (Unreleased)
+### v0.4.1 (2026-02-09)
 - **Auto Mode Clean Shutdown:**
   - Fixed shutdown hang by adding stop-aware wait in `AgentRunner.run_async()`
   - Added stop_task to wait list for immediate response to stop requests
@@ -279,7 +283,7 @@ The tray will include a folder picker to set the export destination:
   - Replaced "Output Format" submenu with "Additional Output Format" → "EDL" toggle
   - EDL toggle persists via StateStore and affects both manual fetch and auto mode
   - Updated tray menu labels: "Fetch Latest Markers (Now)" → "Fetch Latest Stream Markers"
-- **Tests:** All 298 tests passing
+- **Tests:** All tests passing
 
 ### v0.4.0 (2026-02-07) - Release Readiness
 - **Windows Startup Integration (`platform/windows_startup.py`):**
