@@ -181,8 +181,8 @@ automatic-twitch-markers/
 ### Newly Added Features
 13. [x] Add a "Fetch Multiple Stream Markers" button to the tray app
 14. [x] Implement OAuth Device Code Grant Flow (get rid of secret requirement)
-15. [ ] Refactor "Fetch Multiple Stream Markers" button to use tkcalendar for date selection
-16. [ ] Add quick select options for last 7, 14, 30, 60 days
+15. [x] Refactor "Fetch Multiple Stream Markers" button to use ttkbootstrap for date selection
+16. [x] Add quick select options for last 7, 14, 30, 60 days
 
 ## Export Formats
 
@@ -261,6 +261,8 @@ The tray will include a folder picker to set the export destination:
   - Applied modern "flatly" theme to date range dialog
   - Implemented custom validation helpers (no mindate/maxdate in ttkbootstrap)
   - Pure validation functions: `compute_allowed_window()`, `validate_date_in_range()`, `validate_date_range_order()`
+  - Switched date range dialog to pseudo-modal behavior to avoid DateEntry popup grab/focus conflicts
+  - Added `DateRangeDialogStyle` hooks for dialog-level theme and widget bootstyle customization
   - Removed tkcalendar and babel build dependencies
 - **Dependency:** Added `ttkbootstrap>=1.5.0,<2.0` for modern ttk themes and DateEntry widget
 - **Tests:** All 380+ tests passing (15 new date validation tests)

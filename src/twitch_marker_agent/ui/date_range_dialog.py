@@ -9,10 +9,23 @@ Includes preset buttons for common date ranges and custom validation.
 from __future__ import annotations
 
 import tkinter as tk
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 import ttkbootstrap as ttk
 from ttkbootstrap import DateEntry
+
+
+_SHARED_HIDDEN_ROOT: tk.Tk | None = None
+
+
+def _get_shared_hidden_root() -> tk.Tk:
+    """Return a process-wide hidden Tk root for parentless dialogs."""
+    global _SHARED_HIDDEN_ROOT
+    if _SHARED_HIDDEN_ROOT is None:
+        _SHARED_HIDDEN_ROOT = tk.Tk()
+        _SHARED_HIDDEN_ROOT.withdraw()
+    return _SHARED_HIDDEN_ROOT
 
 
 def compute_allowed_window(
@@ -104,6 +117,26 @@ def compute_preset_dates(
     return (start_date, today)
 
 
+@dataclass(frozen=True)
+class DateRangeDialogStyle:
+    """
+    Style options for DateRangeDialog appearance.
+
+    These options are dialog-scoped and do not change global application theme.
+    """
+
+    theme: str = "flatly"
+    title_bootstyle: str = "primary"
+    date_entry_bootstyle: str = "primary"
+    preset_button_bootstyle: str = "secondary"
+    ok_button_bootstyle: str = "primary"
+    cancel_button_bootstyle: str = "secondary"
+    error_bootstyle: str = "danger"
+    title_font: tuple[str, int, str] = ("Arial", 12, "bold")
+    body_font: tuple[str, int] = ("Arial", 10)
+    info_font: tuple[str, int] = ("Arial", 9)
+
+
 class DateRangeDialog:
     """
     Tkinter dialog for selecting date range with calendar pickers.
@@ -124,16 +157,23 @@ class DateRangeDialog:
     - start_date = today - 7 (or earliest_allowed if less)
     """
 
-    def __init__(self, parent: tk.Tk | tk.Toplevel | None = None, max_days_back: int = 60):
+    def __init__(
+        self,
+        parent: tk.Tk | tk.Toplevel | None = None,
+        max_days_back: int = 60,
+        style: DateRangeDialogStyle | None = None,
+    ) -> None:
         """
         Initialize date range dialog.
 
         Args:
             parent: Optional parent window.
             max_days_back: Maximum days back from today (default: 60).
+            style: Optional dialog-only style overrides.
         """
         self.parent = parent
         self.max_days_back = max_days_back
+        self.style = style or DateRangeDialogStyle()
         self.result: tuple[date, date] | None = None
 
         # Calculate defaults
@@ -155,7 +195,9 @@ class DateRangeDialog:
         self.dialog: tk.Toplevel | None = None
         self.start_entry: DateEntry | None = None
         self.end_entry: DateEntry | None = None
-        self.error_label: tk.Label | None = None
+        self.error_label: ttk.Label | None = None
+        self._ttk_style: ttk.Style | None = None
+        self._focus_after_id: str | None = None
 
     def show(self) -> tuple[date, date] | None:
         """
@@ -168,13 +210,12 @@ class DateRangeDialog:
         if self.parent:
             self.dialog = tk.Toplevel(self.parent)
         else:
-            # Create hidden root to avoid focus issues
-            self._hidden_root = tk.Tk()
-            self._hidden_root.withdraw()
+            # Reuse one hidden root to avoid destroying the Tcl app between openings.
+            self._hidden_root = _get_shared_hidden_root()
             self.dialog = tk.Toplevel(self._hidden_root)
 
         # Apply ttkbootstrap theme (dialog-only)
-        style = ttk.Style(theme="flatly")
+        self._ttk_style = ttk.Style(theme=self.style.theme)
 
         self.dialog.title("Select Date Range")
         self.dialog.geometry("440x320")
@@ -187,93 +228,96 @@ class DateRangeDialog:
         self.dialog.geometry(f"+{x}+{y}")
 
         # Title label
-        title_label = tk.Label(
+        title_label = ttk.Label(
             self.dialog,
             text="Fetch Multiple Stream Markers",
-            font=("Arial", 12, "bold"),
+            bootstyle=self.style.title_bootstyle,
+            font=self.style.title_font,
         )
         title_label.pack(pady=10)
 
         # Info label
         info_text = f"Select date range (max {self.max_days_back} days back from today)"
-        info_label = tk.Label(self.dialog, text=info_text, font=("Arial", 9))
+        info_label = ttk.Label(self.dialog, text=info_text, font=self.style.info_font)
         info_label.pack(pady=5)
 
         # Preset buttons frame
-        preset_frame = tk.Frame(self.dialog)
+        preset_frame = ttk.Frame(self.dialog)
         preset_frame.pack(pady=8)
 
-        tk.Label(preset_frame, text="Quick select:", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
+        ttk.Label(preset_frame, text="Quick select:", font=self.style.info_font).pack(
+            side=tk.LEFT, padx=5
+        )
 
         for days in [7, 14, 30, 60]:
-            btn = tk.Button(
+            btn = ttk.Button(
                 preset_frame,
                 text=f"Last {days}",
                 width=7,
                 command=lambda d=days: self._set_preset(d),
-                font=("Arial", 9),
+                bootstyle=self.style.preset_button_bootstyle,
             )
             btn.pack(side=tk.LEFT, padx=2)
 
         # Date input frame
-        input_frame = tk.Frame(self.dialog)
+        input_frame = ttk.Frame(self.dialog)
         input_frame.pack(pady=10)
 
         # Start date with DateEntry
-        tk.Label(input_frame, text="Start Date:", font=("Arial", 10)).grid(
+        ttk.Label(input_frame, text="Start Date:", font=self.style.body_font).grid(
             row=0, column=0, sticky="e", padx=5, pady=8
         )
         self.start_entry = DateEntry(
             input_frame,
             width=14,
             dateformat="%Y-%m-%d",
-            bootstyle="primary",
+            bootstyle=self.style.date_entry_bootstyle,
             startdate=self.default_start,
         )
         self.start_entry.grid(row=0, column=1, padx=5, pady=8)
 
         # End date with DateEntry
-        tk.Label(input_frame, text="End Date:", font=("Arial", 10)).grid(
+        ttk.Label(input_frame, text="End Date:", font=self.style.body_font).grid(
             row=1, column=0, sticky="e", padx=5, pady=8
         )
         self.end_entry = DateEntry(
             input_frame,
             width=14,
             dateformat="%Y-%m-%d",
-            bootstyle="primary",
+            bootstyle=self.style.date_entry_bootstyle,
             startdate=self.default_end,
         )
         self.end_entry.grid(row=1, column=1, padx=5, pady=8)
 
         # Error label (initially hidden)
-        self.error_label = tk.Label(
+        self.error_label = ttk.Label(
             self.dialog,
             text="",
-            fg="red",
-            font=("Arial", 9),
+            bootstyle=self.style.error_bootstyle,
+            font=self.style.info_font,
             wraplength=400,
         )
         self.error_label.pack(pady=5)
 
         # Button frame
-        button_frame = tk.Frame(self.dialog)
+        button_frame = ttk.Frame(self.dialog)
         button_frame.pack(pady=10)
 
-        ok_button = tk.Button(
+        ok_button = ttk.Button(
             button_frame,
             text="OK",
             width=10,
             command=self._on_ok,
-            font=("Arial", 10),
+            bootstyle=self.style.ok_button_bootstyle,
         )
         ok_button.grid(row=0, column=0, padx=5)
 
-        cancel_button = tk.Button(
+        cancel_button = ttk.Button(
             button_frame,
             text="Cancel",
             width=10,
             command=self._on_cancel,
-            font=("Arial", 10),
+            bootstyle=self.style.cancel_button_bootstyle,
         )
         cancel_button.grid(row=0, column=1, padx=5)
 
@@ -281,26 +325,42 @@ class DateRangeDialog:
         self.dialog.bind("<Return>", lambda e: self._on_ok())
         self.dialog.bind("<Escape>", lambda e: self._on_cancel())
 
-        # Make dialog modal
+        self.dialog.protocol("WM_DELETE_WINDOW", self._on_cancel)
+
+        # Keep pseudo-modal behavior (no grab_set).
         if self.parent:
             self.dialog.transient(self.parent)
-        self.dialog.grab_set()
 
-        # Ensure focus - critical for editability
+        # Avoid focus forcing because DateEntry opens its own modal popup.
         self.dialog.lift()
-        self.dialog.focus_force()
-        # Use after to ensure widget is fully initialized
-        self.dialog.after(100, lambda: self.start_entry.focus_set() if self.start_entry else None)
+        self._focus_after_id = self.dialog.after_idle(self._focus_start_entry)
 
         # Wait for dialog to close
         self.dialog.wait_window(self.dialog)
-
-        # Clean up hidden root if we created one
-        if self._hidden_root:
-            self._hidden_root.destroy()
-            self._hidden_root = None
+        self.dialog = None
+        self.start_entry = None
+        self.end_entry = None
+        self.error_label = None
 
         return self.result
+
+    def _focus_start_entry(self) -> None:
+        """Focus the start date input when the dialog is idle."""
+        self._focus_after_id = None
+        if self.start_entry and self.start_entry.winfo_exists():
+            self.start_entry.focus_set()
+
+    def _close_dialog(self) -> None:
+        """Cancel pending callbacks and close the dialog window safely."""
+        if self.dialog is None:
+            return
+        if self._focus_after_id is not None:
+            try:
+                self.dialog.after_cancel(self._focus_after_id)
+            except tk.TclError:
+                pass
+            self._focus_after_id = None
+        self.dialog.destroy()
 
     def _set_preset(self, days: int) -> None:
         """Set date range to last N days (end=today, start=today-N)."""
@@ -364,11 +424,9 @@ class DateRangeDialog:
 
         # Valid - store result and close
         self.result = (start_date, end_date)
-        if self.dialog:
-            self.dialog.destroy()
+        self._close_dialog()
 
     def _on_cancel(self) -> None:
         """Close dialog without returning a result."""
         self.result = None
-        if self.dialog:
-            self.dialog.destroy()
+        self._close_dialog()
