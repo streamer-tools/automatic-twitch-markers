@@ -59,8 +59,6 @@ class AppConfig:
         # Validate required strings are not empty
         if not self.client_id:
             raise ValueError("client_id is required")
-        if not self.broadcaster_id:
-            raise ValueError("broadcaster_id is required")
 
         # Validate export formats
         valid_formats = {"csv", "edl"}
@@ -87,12 +85,20 @@ class AppConfig:
             raise ValueError("timecode_fps must be >= 1")
 
 
-def load_config(config_path: str | Path) -> AppConfig:
+def load_config(
+    config_path: str | Path,
+    *,
+    base_dir: Path | None = None,
+    allow_empty_broadcaster_id: bool = False,
+) -> AppConfig:
     """
     Load and validate configuration from a JSON file.
 
     Args:
         config_path: Path to config.json file.
+        base_dir: Base directory for resolving relative paths. If None, uses
+            the config file's parent directory.
+        allow_empty_broadcaster_id: If True, permits empty broadcaster_id.
 
     Returns:
         Validated AppConfig instance.
@@ -111,6 +117,18 @@ def load_config(config_path: str | Path) -> AppConfig:
     with path.open("r", encoding="utf-8") as f:
         data: dict[str, Any] = json.load(f)
 
+    anchor_dir = Path(base_dir) if base_dir is not None else path.parent
+
+    def _anchor_path(value: str, default: str) -> Path:
+        raw_path = Path(value or default)
+        if raw_path.is_absolute():
+            return raw_path
+        return anchor_dir / raw_path
+
+    broadcaster_id = str(data["broadcaster_id"]).strip()
+    if not allow_empty_broadcaster_id and not broadcaster_id:
+        raise ValueError("broadcaster_id is required")
+
     # Extract retry config
     retry_data = data.get("retry", {})
     retry_config = RetryConfig(
@@ -124,16 +142,46 @@ def load_config(config_path: str | Path) -> AppConfig:
         client_id=data["client_id"],
         client_secret=data.get("client_secret", ""),
         redirect_uri=data.get("redirect_uri", "http://localhost:3000/callback"),
-        broadcaster_id=data["broadcaster_id"],
-        output_dir=Path(data.get("output_dir", "./exports")),
+        broadcaster_id=broadcaster_id,
+        output_dir=_anchor_path(str(data.get("output_dir", "./exports")), "./exports"),
         export_formats=tuple(data.get("export_formats", ["csv"])),
         resolve_offset_enabled=data.get("resolve_offset_enabled", False),
         resolve_offset_timecode=data.get("resolve_offset_timecode", "01:00:00:00"),
         timecode_fps=data.get("timecode_fps", 24),
         log_level=data.get("log_level", "INFO"),
-        state_db_path=Path(data.get("state_db_path", "./data/state.db")),
+        state_db_path=_anchor_path(
+            str(data.get("state_db_path", "./data/state.db")),
+            "./data/state.db",
+        ),
         retry=retry_config,
     )
+
+
+def write_broadcaster_id_if_empty(config_path: Path, broadcaster_id: str) -> bool:
+    """
+    Persist broadcaster_id to config.json only when currently empty.
+
+    Args:
+        config_path: Path to config.json.
+        broadcaster_id: Broadcaster user ID to write.
+
+    Returns:
+        True if file was updated, False if unchanged.
+    """
+    path = Path(config_path)
+    with path.open("r", encoding="utf-8") as f:
+        data: dict[str, Any] = json.load(f)
+
+    current = str(data.get("broadcaster_id", "")).strip()
+    if current and current != "YOUR_BROADCASTER_USER_ID":
+        return False
+
+    data["broadcaster_id"] = str(broadcaster_id).strip()
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+
+    return True
 
 
 def get_logging_level(config: AppConfig) -> int:

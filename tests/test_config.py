@@ -12,6 +12,7 @@ from twitch_marker_agent.core.config import (
     RetryConfig,
     load_config,
     get_logging_level,
+    write_broadcaster_id_if_empty,
 )
 
 
@@ -166,6 +167,64 @@ class TestLoadConfig(unittest.TestCase):
         self.assertEqual(config.export_formats, ("csv",))
         self.assertFalse(config.resolve_offset_enabled)
         self.assertEqual(config.log_level, "INFO")
+
+    def test_relative_paths_anchor_to_base_dir(self) -> None:
+        """Relative output/state paths should anchor to provided base_dir."""
+        config_data = {
+            "client_id": "test",
+            "broadcaster_id": "123",
+            "output_dir": "./exports",
+            "state_db_path": "./data/state.db",
+        }
+        config_path = self._write_config(config_data)
+        base_dir = Path(self.temp_dir) / "portable_root"
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        config = load_config(config_path, base_dir=base_dir)
+
+        self.assertEqual(config.output_dir, base_dir / "exports")
+        self.assertEqual(config.state_db_path, base_dir / "data" / "state.db")
+
+    def test_allow_empty_broadcaster_id(self) -> None:
+        """Should allow empty broadcaster_id when explicitly requested."""
+        config_data = {
+            "client_id": "test",
+            "broadcaster_id": "",
+        }
+        config_path = self._write_config(config_data)
+
+        config = load_config(config_path, allow_empty_broadcaster_id=True)
+
+        self.assertEqual(config.broadcaster_id, "")
+
+    def test_empty_broadcaster_id_rejected_by_default(self) -> None:
+        """Should reject empty broadcaster_id unless explicitly allowed."""
+        config_data = {
+            "client_id": "test",
+            "broadcaster_id": "",
+        }
+        config_path = self._write_config(config_data)
+
+        with self.assertRaises(ValueError):
+            load_config(config_path)
+
+    def test_write_broadcaster_id_if_empty_writes_once(self) -> None:
+        """Should write broadcaster_id only when existing value is empty."""
+        config_data = {
+            "client_id": "test",
+            "broadcaster_id": "",
+        }
+        config_path = self._write_config(config_data)
+
+        wrote = write_broadcaster_id_if_empty(config_path, "12345")
+        self.assertTrue(wrote)
+
+        with config_path.open("r", encoding="utf-8") as f:
+            updated = json.load(f)
+        self.assertEqual(updated["broadcaster_id"], "12345")
+
+        wrote_again = write_broadcaster_id_if_empty(config_path, "99999")
+        self.assertFalse(wrote_again)
 
 
 class TestGetLoggingLevel(unittest.TestCase):

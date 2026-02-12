@@ -294,6 +294,23 @@ class TestGetStartupCommand(unittest.TestCase):
         self.assertTrue(result.startswith('"'))
         self.assertIn('"', result)
 
+    def test_frozen_command_uses_absolute_path(self) -> None:
+        """Frozen startup command should use resolved absolute exe path."""
+        from twitch_marker_agent.platform import windows_startup
+
+        with patch.object(sys, "frozen", True, create=True):
+            with patch.object(sys, "executable", "TwitchMarkerAgent.exe"):
+                with patch.object(
+                    Path,
+                    "resolve",
+                    return_value=Path("C:/Portable/TwitchMarkerAgent/TwitchMarkerAgent.exe"),
+                ):
+                    result = windows_startup.get_startup_command()
+
+        self.assertTrue(result.startswith('"'))
+        self.assertTrue(result.endswith('"'))
+        self.assertIn("TwitchMarkerAgent.exe", result)
+
 
 if __name__ == "__main__":
     unittest.main()

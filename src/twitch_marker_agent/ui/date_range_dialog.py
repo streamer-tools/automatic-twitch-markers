@@ -197,6 +197,7 @@ class DateRangeDialog:
         self.end_entry: DateEntry | None = None
         self.error_label: ttk.Label | None = None
         self._ttk_style: ttk.Style | None = None
+        self._activate_after_id: str | None = None
         self._focus_after_id: str | None = None
 
     def show(self) -> tuple[date, date] | None:
@@ -331,9 +332,9 @@ class DateRangeDialog:
         if self.parent:
             self.dialog.transient(self.parent)
 
-        # Avoid focus forcing because DateEntry opens its own modal popup.
+        # Activate once before user interaction so first clicks reach preset buttons.
         self.dialog.lift()
-        self._focus_after_id = self.dialog.after_idle(self._focus_start_entry)
+        self._activate_after_id = self.dialog.after_idle(self._activate_dialog)
 
         # Wait for dialog to close
         self.dialog.wait_window(self.dialog)
@@ -343,6 +344,18 @@ class DateRangeDialog:
         self.error_label = None
 
         return self.result
+
+    def _activate_dialog(self) -> None:
+        """Bring dialog to the foreground once, then focus start entry."""
+        self._activate_after_id = None
+        if not self.dialog or not self.dialog.winfo_exists():
+            return
+        try:
+            self.dialog.lift()
+            self.dialog.focus_force()
+        except tk.TclError:
+            return
+        self._focus_after_id = self.dialog.after_idle(self._focus_start_entry)
 
     def _focus_start_entry(self) -> None:
         """Focus the start date input when the dialog is idle."""
@@ -354,6 +367,12 @@ class DateRangeDialog:
         """Cancel pending callbacks and close the dialog window safely."""
         if self.dialog is None:
             return
+        if self._activate_after_id is not None:
+            try:
+                self.dialog.after_cancel(self._activate_after_id)
+            except tk.TclError:
+                pass
+            self._activate_after_id = None
         if self._focus_after_id is not None:
             try:
                 self.dialog.after_cancel(self._focus_after_id)

@@ -9,8 +9,6 @@ Canonical CSV Format (4 columns):
 2. User Type
 3. Username
 4. Marker Title / Description
-
-Header row required; first cell is "Timestamp".
 """
 
 from __future__ import annotations
@@ -156,14 +154,6 @@ def export_markers_csv(
     # Write CSV with UTF-8 BOM for Excel compatibility
     with file_path.open("w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f, quoting=csv.QUOTE_ALL)
-
-        # Header row (canonical format)
-        writer.writerow([
-            "Timestamp",
-            "User Type",
-            "Username",
-            "Marker Title",
-        ])
 
         # Data rows
         for marker in markers:

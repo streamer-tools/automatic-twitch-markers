@@ -11,6 +11,8 @@ Uses Windows Registry: `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVers
 - Uses only stdlib `winreg` module (no new dependencies)
 - Industry-standard approach for user-level startup apps
 - Survives reboots, user-controlled
+- Stores an absolute, quoted executable/interpreter path (no `cmd /c` wrapper)
+- Avoids System32 working-directory issues by keeping runtime path resolution EXE-relative
 
 ## Module Location
 
@@ -56,16 +58,16 @@ def get_startup_command() -> str:
 ```python
 def get_startup_command() -> str:
     if getattr(sys, 'frozen', False):
-        # Packaged exe: use executable directly
-        return f'"{sys.executable}"'
+        # Packaged exe: use absolute executable path
+        return f'"{Path(sys.executable).resolve()}"'
     else:
         # Running from source: use pythonw.exe to avoid console
         python_dir = Path(sys.executable).parent
         pythonw = python_dir / "pythonw.exe"
         if pythonw.exists():
-            return f'"{pythonw}" -m twitch_marker_agent.app'
+            return f'"{pythonw.resolve()}" -m twitch_marker_agent.app'
         else:
-            return f'"{sys.executable}" -m twitch_marker_agent.app'
+            return f'"{Path(sys.executable).resolve()}" -m twitch_marker_agent.app'
 ```
 
 ## Cross-Platform Behavior

@@ -4,14 +4,18 @@
 **Automatic Twitch Markers** is a Windows "set-and-forget" tray agent for Twitch streamers. It automatically exports stream markers to CSV/EDL files when a broadcast ends, solving a limitation of tools like Streamer.bot that typically don't support obtaining/using the `channel:manage:broadcast` user-token scope required for marker fetching in this workflow.
 
 ## 2. Current Status
-- **Version**: 0.5.0 (Pre-Alpha)
+- **Version**: 1.0.0 (Portable release polish)
 - **Features Complete**:
   - OAuth 2.0 User Token flow (login, refresh, validate)
+  - Device Code Flow auth in tray UI (no runtime client_secret requirement)
   - EventSub WebSocket (offline detection)
   - Helix API integration (Get Stream Markers, Get Videos)
   - Exports: Twitch-format CSV and Resolve-compatible EDL with offsets
   - Tray App: Manual fetch, multi-fetch (date range), config persistence, auto mode start/stop
+  - Broadcaster identity bootstrap after auth (`/helix/users` -> persisted in `StateStore`)
+  - Portable runtime path anchoring (EXE-relative when frozen, CWD in dev)
   - Windows Startup: Registry-based "Run" key integration
+  - Windows startup command uses absolute quoted path (no System32 CWD dependency)
   - Packaging: PyInstaller build script for standalone exe
   - CI/CD: GitHub Actions for automated release builds
 - **Limitations**:
@@ -21,7 +25,7 @@
 
 ## 3. Non-negotiable Invariants
 Derived from `AGENTS.md`:
-- **Security**: NEVER log secrets (tokens, client_secret). **Never commit `local.config.json` containing secrets.** Commit only `config.json` with placeholders. Never paste secrets/tokens into logs, issues, PRs, screenshots, or chat.
+- **Security**: NEVER log secrets (tokens, client_secret). Commit only placeholder-safe `config.json`. Never paste secrets/tokens into logs, issues, PRs, screenshots, or chat.
 - **Scope**: No new dependencies. No config schema changes.
 - **Architecture**: `core/` is framework-agnostic. `app.py` contains all UI logic.
 - **Testing**: `unittest` + `unittest.mock` ONLY. No network calls in tests.
@@ -30,9 +34,9 @@ Derived from `AGENTS.md`:
 ## 4. How to Run (Local)
 
 **Prerequisites**:
-- Copy `config.json` → `local.config.json`
-- Fill in real `CLIENT_ID` / `CLIENT_SECRET` in `local.config.json`
-- Confirm `local.config.json` is gitignored before committing
+- Edit `config.json` in the repo root (dev) or next to `TwitchMarkerAgent.exe` (frozen)
+- Set real `client_id` (tray device auth does not require `client_secret`)
+- Leave `broadcaster_id` blank if desired; tray auth will auto-populate it after success
 - Virtual environment active (`.venv\Scripts\Activate.ps1`)
 
 **Run Tests**:
@@ -52,6 +56,8 @@ python -m twitch_marker_agent.cli auth-login
 
 ## 5. Architecture Snapshot
 - **`src/twitch_marker_agent/core/`**:
+  - `runtime_paths.py`: Runtime base path resolver (portable path anchoring).
+  - `auth_identity.py`: Authenticated broadcaster identity fetch/persist/resolve.
   - `agent_runner.py`: Async orchestrator for Auto Mode (EventSub + Markers).
   - `eventsub_ws.py`: WebSocket client handling `stream.offline`.
   - `twitch_oauth.py`: Token management.
@@ -81,27 +87,25 @@ python -m twitch_marker_agent.cli auth-login
   - **Scope/Non-Goals**: What was intentionally excluded.
 - **Model Selection** (always start prompts with "Model pick (why)" block):
   - **ChatGPT (GPT-5.2 Thinking)**: RUN 1 prompt crafting, spec tightening, post-RUN 2 review, PR/commit writing
-  - **Claude Sonnet 4.5** (Antigravity): Default for most RUN 2 implementations, straightforward debugging, tests, small fixes, docs. **Sonnet-safe ✅**
-  - **Claude Opus 4.5** (Antigravity): Complex tasks with unclear root cause, multi-file interactions, async/race conditions, auth/security, flakiness, or when Sonnet attempt failed. **Opus-worthy 🧠**
+  - **GPR-5.3-Codex**: (Antigravity): Default for most RUN 2 implementations, straightforward debugging, tests, small fixes, docs.
+  - **Claude Sonnet 4.5** (Antigravity): Backup for most RUN 2 implementations, straightforward debugging, tests, small fixes, docs. Use when Codex is not available, or if Sonnet is better suited for the task. **Sonnet-safe ✅**
+  - **Claude Opus 4.5** (Antigravity): Use for complex tasks with unclear root cause, multi-file interactions, async/race conditions, auth/security, flakiness, or when we need maximum quality. **Opus-worthy 🧠**
   - **Gemini 3 Pro (High)**: Docs-only changes, simple mechanical patches, fallback when Claude quota capped 
-  - **Codex/other**: When applicable based on task/quota
   - *Note: Opus and Sonnet share quota pool; prefer Sonnet when sufficient; use Opus when it materially improves quality/saves time.*
 - **Testing**: 100% Mock-based. No real registry or network access.
 
 ## 7. Active Work / Next Steps
-Towards v1.0 Release:
-- [x] Auto Mode (EventSub)
-- [x] Tray App UI
-- [x] Windows Startup Integration
-- [x] Packaging (PyInstaller to .exe)
-- [x] CI/CD (GitHub Actions for release builds)
+1. Validate portable zip behavior on a clean machine (fresh config, first auth, fetch flows).
+2. Confirm Windows startup toggle from packaged exe creates expected HKCU Run command.
+3. Prepare release notes and tag for v1.0.0.
 
 ## 8. Quick Restart Checklist
 1. **Pull latest** and ensure clean git state.
 2. **Read** `AGENTS.md` and this file (`docs/handoff.md`).
 3. **Run tests** (`python -m unittest discover -s tests -v`) to confirm baseline.
-4. **Check** `README.md` "Next Implementation Steps" for active task.
+4. **Check** `README.md` changelog and open tasks for active scope.
 5. **Generate RUN 1** prompt for planning.
 6. **Wait** for "Proceed RUN 2".
 7. **Implement**, verifying with tests.
 8. **Update Docs** (README/AGENTS) as part of the run.
+

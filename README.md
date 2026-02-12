@@ -59,7 +59,7 @@ This agent solves that by:
    ```
 
 4. **Configure** (see Configuration section below):
-   - Edit `config.json` with your Twitch app credentials
+   - Edit `config.json` with your Twitch app credentials (`client_id` required; `client_secret` optional for tray/device auth flow)
 
 5. **Run tests** to verify installation:
    ```powershell
@@ -94,6 +94,7 @@ The tray app provides:
 - **Additional Output Format** → **EDL** - toggle EDL export (CSV always exported)
 - **Output Folder** - open or change export directory
 - **Start on Windows Login** - toggle automatic startup (Windows only)
+- **Authenticate with Twitch** - device flow auto-detects your broadcaster identity and stores it after success
 
 > **Note:** Fetch and Auto Mode actions are disabled until you authenticate with Twitch. Other settings (output folder, EDL toggle, startup) remain accessible.
 
@@ -101,21 +102,26 @@ The tray app provides:
 
 ## Configuration
 
-For local development, copy `config.json` to `config.local.json` (gitignored) and edit with your Twitch app credentials. The app will load `config.local.json` if present, otherwise falls back to `config.json`.
+Runtime paths are portable-only in 1.0:
+- Frozen exe: base directory is the folder containing `TwitchMarkerAgent.exe`
+- Dev mode (`python -m ...`): base directory is `Path.cwd()`
+- `config.json` is loaded from `<base_dir>/config.json`
+- Logs are written under `<base_dir>/logs/`
+- Default state DB path is `<base_dir>/data/state.db`
 
 | Key | Type | Description |
 |-----|------|-------------|
 | `client_id` | string | Twitch application client ID |
-| `client_secret` | string | Twitch application client secret |
+| `client_secret` | string | Twitch application client secret (not required for tray/device auth flow) |
 | `redirect_uri` | string | OAuth redirect URI (default: `http://localhost:3000/callback`) |
-| `broadcaster_id` | string | Your Twitch user ID (numeric) |
+| `broadcaster_id` | string | Broadcaster user ID; may be left blank and auto-populated after successful tray device auth |
 | `output_dir` | string | Directory for exported files |
 | `export_formats` | array | List of formats: `["csv", "edl"]` |
 | `resolve_offset_enabled` | boolean | Apply timecode offset for DaVinci Resolve |
 | `resolve_offset_timecode` | string | Offset in `HH:MM:SS:FF` format |
 | `timecode_fps` | integer | Frame rate for EDL timecode (e.g., `24`, `30`) |
 | `log_level` | string | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-| `state_db_path` | string | Path to SQLite state database |
+| `state_db_path` | string | Path to SQLite state database (relative paths are anchored to runtime base dir) |
 | `retry.max_attempts` | integer | Max retry attempts for API calls |
 | `retry.base_delay_seconds` | float | Initial backoff delay |
 | `retry.max_delay_seconds` | float | Maximum backoff delay |
@@ -147,6 +153,7 @@ automatic-twitch-markers/
 │   │   ├── agent.py           # Manual fetch orchestrator
 │   │   ├── agent_runner.py    # Async EventSub + auto mode orchestrator
 │   │   ├── config.py          # Configuration loading/validation
+│   │   ├── auth_identity.py   # Authenticated user identity bootstrap/resolution
 │   │   ├── eventsub_ws.py     # EventSub WebSocket client
 │   │   ├── eventsub_subscriptions.py # Helix subscription management
 │   │   ├── export_csv.py      # CSV export (Twitch-style)
@@ -155,6 +162,7 @@ automatic-twitch-markers/
 │   │   ├── markers_api.py     # Helix Get Stream Markers
 │   │   ├── offline_handler.py # Stream offline notification handler
 │   │   ├── retry.py           # Exponential backoff utility
+│   │   ├── runtime_paths.py   # Runtime base dir + config/log/state path resolution
 │   │   ├── state_store.py     # SQLite state + token storage
 │   │   └── twitch_oauth.py    # OAuth login/refresh/validate
 │   ├── platform/              # Platform-specific features
@@ -190,8 +198,10 @@ See [docs/export_formats.md](docs/export_formats.md) for detailed format specifi
 
 | Format | Status | Description |
 |--------|--------|-------------|
-| Twitch CSV | ✅ Implemented | Canonical 4-column format, compatible with CSV→EDL converters |
-| Resolve EDL | ✅ Implemented | CMX 3600 format with marker metadata and configurable offset |
+| Twitch CSV | Implemented | Canonical 4-column format (no header row), compatible with CSV->EDL converters |
+| Resolve EDL | Implemented | CMX 3600 event + metadata format with DaVinci timeline preamble (`EDL`, `Title`, `FCM`) and configurable offset |
+
+Marker attribution fields are populated from Helix marker grouping data (`user_name`/`user_login`) with inferred user type (`Broadcaster`/`Editor`) instead of static placeholders.
 
 ## Tray App
 
@@ -222,12 +232,35 @@ The Windows tray app provides automatic and manual marker export:
 
 ### Output Folder Picker
 
-The tray will include a folder picker to set the export destination:
+The tray includes a folder picker to set the export destination:
 - Browse button opens native folder picker dialog
 - Selection persisted via StateStore (no need to edit config.json manually)
 - Default falls back to `output_dir` from config.json
 
 ## Changelog
+
+### v0.9.0 (Unreleased)
+- **Portable Runtime + Auth Polish:**
+  - Runtime paths are now deterministic and portable-only: `config.json`, logs, and relative state paths resolve from the exe directory (frozen) or `Path.cwd()` (dev)
+  - Windows startup command now stores an absolute, quoted executable/interpreter path to avoid System32 working-directory path issues
+  - Tray device auth now auto-detects authenticated broadcaster identity via Helix `/users`, persists identity in `StateStore`, and writes `broadcaster_id` into `config.json` when empty
+  - Tray auth dialog now auto-closes reliably on successful authentication and shows `Authenticated as <display_name>` notification
+  - Manual fetch, multi-fetch, and auto-mode subscription flow resolve broadcaster ID from persisted state first, then config fallback, with clear re-auth guidance when missing
+  - Tray device code flow does not require `client_secret` at runtime
+
+### v0.8.1 (2026-02-12)
+- **EDL Format Alignment Patch:**
+  - Restored DaVinci-style preamble lines: `EDL`, `Title: Timeline 1`, `FCM: NON-DROP-FRAME`
+  - Event numbering now starts at `000` to match timeline marker EDL output style
+  - Event line spacing updated to match expected `V    C` layout
+
+### v0.8.0 (2026-02-12)
+- **Export Correctness Patch:**
+  - Marker export attribution now uses Helix marker response grouping data (`user_name` fallback `user_login`) for `username`
+  - Marker `user_type` is now inferred per export row (`Broadcaster` when marker user matches fetched broadcaster ID, otherwise `Editor`)
+  - CSV export now writes marker rows only (removed header row) while preserving UTF-8 BOM and quoted-field behavior
+  - EDL export now starts at the first event line (removed `TITLE`/`FCM` preamble)
+- **Tests:** Added/updated unittest coverage for parser attribution, CSV no-header behavior, comma-safe CSV parsing, and EDL no-preamble output
 
 ### v0.7.0 (2026-02-11)
 - **Date Picker Migration:**

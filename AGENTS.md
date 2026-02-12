@@ -72,8 +72,10 @@ During scaffold development, modules are implemented incrementally:
 **Implemented:**
 - OAuth login flow (`twitch_oauth.py` - `interactive_login`, `auth-login` CLI)
 - Device Code Flow auth (`core/device_auth.py`, `ui/device_auth_dialog.py`)
+- Auth identity bootstrap (`core/auth_identity.py` - fetch/persist/resolve broadcaster identity)
 - Token maintenance (`twitch_oauth.py` - `refresh_access_token`, `validate_access_token`, `get_valid_user_access_token`)
 - Configuration loading (`config.py`)
+- Runtime path resolution (`runtime_paths.py` - EXE-relative/CWD-relative config/log/state paths)
 - State storage (`state_store.py`)
 - Retry utility (`retry.py`)
 - EventSub WebSocket (`eventsub_ws.py` - `connect`, `run_until_stopped`, message dispatch)
@@ -99,6 +101,7 @@ During scaffold development, modules are implemented incrementally:
 1. **Type Hints**: All functions must have complete type annotations
 2. **Docstrings**: All public classes/functions need docstrings
 3. **Paths**: Use `pathlib.Path` for all file system paths
+   - Runtime entrypoints must resolve paths from EXE directory when frozen (`sys.executable`), or `Path.cwd()` in dev mode.
 4. **Logging**: Use `logging` stdlib, inject logger instances
 5. **Testing**: Use `unittest` stdlib only (no pytest)
 
@@ -158,6 +161,8 @@ python -c "from twitch_marker_agent.core import agent"
 | File | Purpose |
 |------|---------|
 | `config.py` | Load/validate config.json, expose `AppConfig` dataclass |
+| `runtime_paths.py` | Resolve runtime base/config/log/state paths for portable execution |
+| `auth_identity.py` | Fetch/persist authenticated broadcaster identity and resolve broadcaster_id |
 | `state_store.py` | SQLite wrapper for state + token storage |
 | `retry.py` | Sync exponential backoff (async TODO) |
 | `twitch_oauth.py` | Browser OAuth + token refresh/validate |

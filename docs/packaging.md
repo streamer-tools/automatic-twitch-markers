@@ -56,7 +56,7 @@ dist/
 ```
 - Tray icon should appear in system tray
 - Right-click for menu (Auto Mode, Fetch Markers, etc.)
-- Requires `local.config.json` with valid Twitch credentials
+- Requires `config.json` next to the exe with valid `client_id` (tray device auth does not require `client_secret`)
 
 ---
 

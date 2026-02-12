@@ -395,6 +395,24 @@ class TestRunManualFetch(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("Not logged in", result.message)
 
+    def test_missing_broadcaster_identity_returns_error(self) -> None:
+        """Should fail gracefully when broadcaster identity is unavailable."""
+        self.config.broadcaster_id = ""
+        self.state_store.get_state.return_value = None
+
+        result = run_manual_fetch(
+            http_client=self.http_client,
+            config=self.config,
+            state_store=self.state_store,
+            oauth=self.oauth,
+            output_dir=self.output_dir,
+            export_formats=self.export_formats,
+            logger=self.logger,
+        )
+
+        self.assertFalse(result.success)
+        self.assertIn("broadcaster identity", result.message.lower())
+
     @patch("twitch_marker_agent.core.markers_api.get_latest_video_id")
     @patch("twitch_marker_agent.core.markers_api.get_stream_markers")
     def test_handles_fetch_error(

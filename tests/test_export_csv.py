@@ -2,7 +2,7 @@
 Tests for CSV export functionality.
 
 Tests verify:
-- Canonical 4-column format with correct header
+- Canonical 4-column format without a header row
 - Timestamp formatting for edge cases
 - Correct row value mapping
 - File naming conventions and fallbacks
@@ -213,8 +213,8 @@ class TestExportMarkersCsv(unittest.TestCase):
             ),
         ]
 
-    def test_header_row_has_correct_columns(self) -> None:
-        """Header must have exactly 4 columns in correct order."""
+    def test_first_row_is_marker_data_without_header(self) -> None:
+        """First CSV row should be marker data (no header row)."""
         markers = self._create_markers()
         file_path = export_markers_csv(
             markers=markers,
@@ -226,29 +226,13 @@ class TestExportMarkersCsv(unittest.TestCase):
 
         with file_path.open("r", encoding="utf-8-sig") as f:
             reader = csv.reader(f)
-            header = next(reader)
+            first_row = next(reader)
 
-        self.assertEqual(len(header), 4)
-        self.assertEqual(header[0], "Timestamp")
-        self.assertEqual(header[1], "User Type")
-        self.assertEqual(header[2], "Username")
-        self.assertEqual(header[3], "Marker Title")
-
-    def test_first_cell_is_timestamp(self) -> None:
-        """First header cell must be 'Timestamp'."""
-        markers = self._create_markers()
-        file_path = export_markers_csv(
-            markers=markers,
-            output_path=self.output_path,
-            config=self.config,
-            video_id="123",
-        )
-
-        with file_path.open("r", encoding="utf-8-sig") as f:
-            reader = csv.reader(f)
-            header = next(reader)
-
-        self.assertEqual(header[0], "Timestamp")
+        self.assertEqual(len(first_row), 4)
+        self.assertEqual(first_row[0], "01:30:00")
+        self.assertEqual(first_row[1], "broadcaster")
+        self.assertEqual(first_row[2], "teststreamer")
+        self.assertEqual(first_row[3], "Boss fight starts")
 
     def test_data_rows_have_correct_values(self) -> None:
         """Data rows should map marker fields correctly."""
@@ -262,7 +246,6 @@ class TestExportMarkersCsv(unittest.TestCase):
 
         with file_path.open("r", encoding="utf-8-sig") as f:
             reader = csv.reader(f)
-            next(reader)  # Skip header
             rows = list(reader)
 
         self.assertEqual(len(rows), 2)
@@ -308,12 +291,10 @@ class TestExportMarkersCsv(unittest.TestCase):
         with file_path.open("r", encoding="utf-8-sig") as f:
             raw_content = f.read()
 
-        # Check header is quoted
-        self.assertIn('"Timestamp"', raw_content)
-        self.assertIn('"User Type"', raw_content)
+        self.assertIn('"01:30:00","broadcaster","teststreamer","Boss fight starts"', raw_content)
 
-    def test_empty_markers_creates_header_only(self) -> None:
-        """Empty marker list should create file with header only."""
+    def test_empty_markers_creates_empty_csv(self) -> None:
+        """Empty marker list should create a CSV with no data rows."""
         file_path = export_markers_csv(
             markers=[],
             output_path=self.output_path,
@@ -325,8 +306,34 @@ class TestExportMarkersCsv(unittest.TestCase):
             reader = csv.reader(f)
             rows = list(reader)
 
-        self.assertEqual(len(rows), 1)  # Header only
-        self.assertEqual(rows[0][0], "Timestamp")
+        self.assertEqual(len(rows), 0)
+
+    def test_description_with_comma_stays_in_single_column(self) -> None:
+        """Descriptions with commas must remain intact when parsed."""
+        markers = [
+            Marker(
+                id="marker1",
+                created_at="2026-02-04T10:30:00Z",
+                position_seconds=5400,
+                description="Boss fight, phase 2 starts",
+                user_type="broadcaster",
+                username="teststreamer",
+            )
+        ]
+        file_path = export_markers_csv(
+            markers=markers,
+            output_path=self.output_path,
+            config=self.config,
+            video_id="123",
+        )
+
+        with file_path.open("r", encoding="utf-8-sig") as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows[0]), 4)
+        self.assertEqual(rows[0][3], "Boss fight, phase 2 starts")
 
     def test_filename_uses_preferred_format(self) -> None:
         """Should use preferred filename format when title available."""

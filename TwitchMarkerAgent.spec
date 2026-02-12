@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_submodules
 
-hiddenimports = ['pystray._win32']
+hiddenimports = ['pystray._win32', 'ttkbootstrap']
 hiddenimports += collect_submodules('pystray')
 hiddenimports += collect_submodules('PIL')
 

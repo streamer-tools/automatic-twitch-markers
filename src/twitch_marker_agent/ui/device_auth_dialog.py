@@ -10,6 +10,7 @@ controller. This keeps the UI thin and testable.
 
 from __future__ import annotations
 
+import queue
 import tkinter as tk
 import webbrowser
 from typing import Callable
@@ -81,7 +82,9 @@ class DeviceAuthDialog:
         self._countdown_label: tk.Label | None = None
         self._status_label: tk.Label | None = None
         self._after_id: str | None = None
+        self._ui_after_id: str | None = None
         self._hidden_root: tk.Tk | None = None
+        self._ui_commands: queue.SimpleQueue[tuple[str, str | None]] = queue.SimpleQueue()
 
     @staticmethod
     def _default_clipboard_copy(widget: tk.Misc, text: str) -> None:
@@ -233,6 +236,9 @@ class DeviceAuthDialog:
         # Auto-copy and auto-open on show
         self._auto_setup()
 
+        # Process queued UI commands (status updates / close signals)
+        self._poll_ui_commands()
+
         # Wait for dialog to close
         self._dialog.wait_window(self._dialog)
 
@@ -242,6 +248,26 @@ class DeviceAuthDialog:
             self._hidden_root = None
 
         return self._success
+
+    def _poll_ui_commands(self) -> None:
+        """Run queued UI operations on the Tk main thread."""
+        if self._dialog is None:
+            return
+
+        try:
+            while True:
+                command, payload = self._ui_commands.get_nowait()
+                if command == "update_status" and payload is not None:
+                    self._do_update_status(payload)
+                elif command == "close_success":
+                    self._do_close_success()
+                elif command == "close_error":
+                    self._close()
+        except queue.Empty:
+            pass
+
+        if self._dialog is not None:
+            self._ui_after_id = self._dialog.after(50, self._poll_ui_commands)
 
     def _auto_setup(self) -> None:
         """Perform auto-copy and auto-open actions on dialog show."""
@@ -324,8 +350,7 @@ class DeviceAuthDialog:
         Args:
             status: New status text to display.
         """
-        if self._dialog:
-            self._dialog.after(0, lambda: self._do_update_status(status))
+        self._ui_commands.put(("update_status", status))
 
     def _do_update_status(self, status: str) -> None:
         """Actually update status (must be called from main thread)."""
@@ -339,8 +364,7 @@ class DeviceAuthDialog:
 
         Called by controller when auth completes successfully.
         """
-        if self._dialog:
-            self._dialog.after(0, self._do_close_success)
+        self._ui_commands.put(("close_success", None))
 
     def _do_close_success(self) -> None:
         """Actually close with success (must be called from main thread)."""
@@ -354,14 +378,17 @@ class DeviceAuthDialog:
         Args:
             message: Error message (not currently displayed, just closes).
         """
-        if self._dialog:
-            self._dialog.after(0, self._close)
+        self._ui_commands.put(("close_error", message))
 
     def _close(self) -> None:
         """Close the dialog."""
         if self._after_id and self._dialog:
             self._dialog.after_cancel(self._after_id)
             self._after_id = None
+
+        if self._ui_after_id and self._dialog:
+            self._dialog.after_cancel(self._ui_after_id)
+            self._ui_after_id = None
 
         if self._dialog:
             self._dialog.destroy()

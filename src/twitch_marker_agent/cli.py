@@ -23,6 +23,10 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     Returns:
         Parsed arguments namespace.
     """
+    from twitch_marker_agent.core.runtime_paths import build_runtime_paths
+
+    runtime_paths = build_runtime_paths()
+
     parser = argparse.ArgumentParser(
         prog="twitch-marker-agent",
         description="Automatically export Twitch stream markers after broadcasts end.",
@@ -30,7 +34,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "-c", "--config",
         type=Path,
-        default=Path("config.json"),
+        default=runtime_paths.config_path,
         help="Path to configuration file (default: config.json)",
     )
     parser.add_argument(
@@ -74,6 +78,7 @@ def cmd_auth_login(args: argparse.Namespace) -> int:
     """
     from twitch_marker_agent.core.config import load_config
     from twitch_marker_agent.core.logging_setup import setup_logging
+    from twitch_marker_agent.core.runtime_paths import build_runtime_paths
     from twitch_marker_agent.core.state_store import StateStore
     from twitch_marker_agent.core.twitch_oauth import (
         OAuthCancelledError,
@@ -82,9 +87,14 @@ def cmd_auth_login(args: argparse.Namespace) -> int:
         TwitchOAuth,
     )
 
+    runtime_paths = build_runtime_paths()
+
     # Load configuration
     try:
-        config = load_config(args.config)
+        config = load_config(
+            args.config,
+            base_dir=runtime_paths.base_dir,
+        )
     except FileNotFoundError:
         print(f"Error: Configuration file not found: {args.config}", file=sys.stderr)
         return 1
@@ -93,7 +103,7 @@ def cmd_auth_login(args: argparse.Namespace) -> int:
         return 1
 
     # Setup logging
-    logger = setup_logging(config)
+    logger = setup_logging(config, log_dir=runtime_paths.logs_dir)
     if args.verbose:
         import logging
         logger.setLevel(logging.DEBUG)

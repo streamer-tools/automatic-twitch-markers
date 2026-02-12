@@ -147,6 +147,40 @@ class TestParseMarkersResponse(unittest.TestCase):
 
         self.assertEqual(result[0].markers[0].description, "")
 
+    def test_populates_username_from_user_name(self) -> None:
+        """Should use user_name for marker username when available."""
+        response = make_markers_response()
+        result = parse_markers_response(response, broadcaster_user_id="12345")
+
+        self.assertEqual(result[0].markers[0].username, "TestUser")
+
+    def test_username_falls_back_to_user_login(self) -> None:
+        """Should fall back to user_login when user_name is missing."""
+        response = make_markers_response()
+        user_block = response["data"][0]
+        user_block.pop("user_name", None)
+        user_block["user_login"] = "test_login"
+
+        result = parse_markers_response(response, broadcaster_user_id="12345")
+
+        self.assertEqual(result[0].markers[0].username, "test_login")
+
+    def test_user_type_broadcaster_when_user_matches(self) -> None:
+        """Should set user_type Broadcaster for matching broadcaster user_id."""
+        response = make_markers_response()
+
+        result = parse_markers_response(response, broadcaster_user_id="12345")
+
+        self.assertEqual(result[0].markers[0].user_type, "Broadcaster")
+
+    def test_user_type_editor_when_user_does_not_match(self) -> None:
+        """Should set user_type Editor for non-broadcaster marker users."""
+        response = make_markers_response()
+
+        result = parse_markers_response(response, broadcaster_user_id="99999")
+
+        self.assertEqual(result[0].markers[0].user_type, "Editor")
+
 
 # =============================================================================
 # Tests for get_stream_markers
@@ -262,6 +296,29 @@ class TestGetStreamMarkers(unittest.TestCase):
             )
 
         self.assertIn("network", str(ctx.exception).lower())
+
+    def test_passes_broadcaster_id_to_parser(self) -> None:
+        """Should pass user_id through for user_type inference in parser."""
+        response_data = make_markers_response(video_id="vid_456")
+        self.http_client.get.return_value = make_mock_response(200, response_data)
+
+        with patch(
+            "twitch_marker_agent.core.markers_api.parse_markers_response",
+            return_value=[],
+        ) as mock_parse:
+            result = get_stream_markers(
+                http_client=self.http_client,
+                config=self.config,
+                access_token=self.access_token,
+                user_id="12345",
+                logger=self.logger,
+            )
+
+        self.assertEqual(result, [])
+        mock_parse.assert_called_once_with(
+            response_data,
+            broadcaster_user_id="12345",
+        )
 
 
 # =============================================================================
