@@ -40,24 +40,25 @@ The canonical CSV format matches Twitch Highlighter-style output for compatibili
 | # | Column | Description |
 |---|--------|-------------|
 | 1 | Timestamp | Position in `HH:MM:SS` format (floor, not rounded) |
-| 2 | User Type | User type identifier (e.g., "broadcaster") |
+| 2 | User Type | Inferred marker owner type (`Broadcaster` or `Editor`) |
 | 3 | Username | Twitch username who created the marker |
 | 4 | Marker Title | User-provided marker description |
 
 ### Format Details
 
-- **Header row:** First cell is `Timestamp`
+- **Header row:** Not included (first row is marker data)
 - **Encoding:** UTF-8 with BOM (for Excel compatibility)
 - **Delimiter:** Comma-separated
 - **Quoting:** All fields quoted
 - **Timestamp:** Derived from `position_seconds` using floor (not rounded)
+- **Username source:** Prefer Helix `user_name`, fallback to `user_login`
+- **User type source:** `Broadcaster` when marker user matches fetched broadcaster ID, otherwise `Editor`
 
 ### Example Output
 
 ```csv
-"Timestamp","User Type","Username","Marker Title"
-"01:30:00","broadcaster","myusername","Boss fight starts"
-"02:15:45","broadcaster","myusername","Epic win moment"
+"01:30:00","Broadcaster","myusername","Boss fight starts"
+"02:15:45","Editor","mod_user","Epic win moment"
 ```
 
 ---
@@ -86,29 +87,31 @@ EDL (Edit Decision List) export for DaVinci Resolve-compatible marker import.
 
 ### EDL Format
 
-**Header:**
+**Preamble:**
 ```
-TITLE: {Timeline Title}
-FCM: NON-DROP FRAME
+EDL
+Title: Timeline 1
+FCM: NON-DROP-FRAME
 ```
 
 **Event + Marker metadata (per marker):**
 ```
-{idx:03}  001      V     C        {startTC} {endTC} {startTC} {endTC}
+{idx:03}  001      V    C        {startTC} {endTC} {startTC} {endTC}
  |C:ResolveColorBlue |M:{description} by {username} [{user_type}] |D:1
 ```
 
 ### Example Output
 
 ```edl
-TITLE: 2026-02-04 Epic Gaming Session
-FCM: NON-DROP FRAME
+EDL
+Title: Timeline 1
+FCM: NON-DROP-FRAME
 
-001  001      V     C        01:30:00:00 01:30:00:01 01:30:00:00 01:30:00:01
- |C:ResolveColorBlue |M:Boss fight starts by streamer [broadcaster] |D:1
+000  001      V    C        01:30:00:00 01:30:00:01 01:30:00:00 01:30:00:01
+ |C:ResolveColorBlue |M:Boss fight starts by myusername [Broadcaster] |D:1
 
-002  001      V     C        02:15:45:00 02:15:45:01 02:15:45:00 02:15:45:01
- |C:ResolveColorBlue |M:Epic win moment by streamer [broadcaster] |D:1
+001  001      V    C        02:15:45:00 02:15:45:01 02:15:45:00 02:15:45:01
+ |C:ResolveColorBlue |M:Epic win moment by mod_user [Editor] |D:1
 ```
 
 ### Timecode Rules
@@ -138,9 +141,9 @@ All exports are written to the configured output directory.
 
 **Configuration options:**
 - `config.json` → `output_dir` setting (for automated exports)
-- Tray app → Output folder selector (planned, for user convenience)
+- Tray app → Output folder selector (implemented, persisted in `StateStore`)
 
-The tray app will provide a folder picker so users can change the export destination without manually editing JSON files.
+The tray app includes a folder picker so users can change the export destination without manually editing JSON files.
 
 ---
 
@@ -152,3 +155,4 @@ A future version will optionally store automatic exports on the Twitch Marker Ag
 - Integration with other streaming tools
 
 This feature is not yet implemented. Local exports remain the primary storage method.
+

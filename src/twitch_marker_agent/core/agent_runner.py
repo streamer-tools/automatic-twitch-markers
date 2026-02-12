@@ -107,6 +107,7 @@ class AgentRunner:
 
         # Notification queue for EventSub messages
         self._notification_queue: asyncio.Queue["EventSubMessage"] | None = None
+        self._expected_broadcaster_id: str | None = None
 
     @property
     def is_running(self) -> bool:
@@ -184,6 +185,7 @@ class AgentRunner:
         self._session_id = None
         self._connected_at = None
         self._last_error = None
+        self._expected_broadcaster_id = None
 
         # Only reset client and queue if not injected (for testing)
         if not self._client_injected:
@@ -206,6 +208,7 @@ class AgentRunner:
             SubscriptionAuthError,
             SubscriptionError,
         )
+        from twitch_marker_agent.core.auth_identity import resolve_broadcaster_id
         from twitch_marker_agent.core.eventsub_ws import (
             EventSubConnectionError,
             EventSubConnectionLost,
@@ -247,13 +250,22 @@ class AgentRunner:
                 return
 
             ensure_fn = self._get_ensure_subscription_fn()
+            self._expected_broadcaster_id = resolve_broadcaster_id(
+                self._config,
+                self._state_store,
+            )
+            if not self._expected_broadcaster_id:
+                self._last_error = "No broadcaster identity found. Authenticate with Twitch."
+                self._logger.warning("AgentRunner: broadcaster identity missing")
+                return
+
             try:
                 self._logger.info("Ensuring stream.offline subscription")
                 ensure_fn(
                     http_client=self._http_client,
                     client_id=self._config.client_id,
                     access_token=access_token,
-                    broadcaster_id=self._config.broadcaster_id,
+                    broadcaster_id=self._expected_broadcaster_id,
                     session_id=session_id,
                     logger=self._logger,
                 )
@@ -398,6 +410,7 @@ class AgentRunner:
         """Handle a single notification message."""
         from twitch_marker_agent.core.twitch_oauth import TokenRefreshError
         from twitch_marker_agent.core.markers_api import MarkersAuthError
+        from twitch_marker_agent.core.auth_identity import resolve_broadcaster_id
 
         # Filter for stream.offline only
         if message.subscription_type != "stream.offline":
@@ -423,7 +436,15 @@ class AgentRunner:
             return
 
         # Check broadcaster matches config
-        if broadcaster_id != self._config.broadcaster_id:
+        expected_broadcaster_id = self._expected_broadcaster_id or resolve_broadcaster_id(
+            self._config,
+            self._state_store,
+        )
+        if not expected_broadcaster_id:
+            self._logger.warning("No broadcaster identity configured; ignoring notification")
+            return
+
+        if broadcaster_id != expected_broadcaster_id:
             self._logger.debug(
                 "Ignoring notification for different broadcaster"
             )
@@ -487,9 +508,15 @@ class AgentRunner:
         # Stop EventSub client (schedule async stop on event loop)
         if self._eventsub_client and self._loop:
             try:
-                asyncio.run_coroutine_threadsafe(
-                    self._eventsub_client.stop(), self._loop
-                )
+                stop_result = self._eventsub_client.stop()
+                if asyncio.iscoroutine(stop_result):
+                    asyncio.run_coroutine_threadsafe(stop_result, self._loop)
+                else:
+                    self._logger.debug(
+                        "EventSub client stop is non-coroutine; skipping async schedule"
+                    )
+            except TypeError:
+                self._logger.debug("Could not schedule client stop, invalid coroutine")
             except RuntimeError:
                 # Loop closed or not running
                 self._logger.debug("Could not schedule client stop, loop unavailable")

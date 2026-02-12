@@ -5,8 +5,10 @@ Exports markers in DaVinci Resolve compatible EDL format with
 marker metadata lines for proper marker import.
 
 EDL Format:
-- TITLE: line with safe title
-- FCM: NON-DROP FRAME
+- EDL preamble lines:
+  - EDL
+  - Title: Timeline 1
+  - FCM: NON-DROP-FRAME
 - Each marker as event + Resolve marker metadata line
 - Marker duration: 1 frame (start :00, end :01)
 
@@ -31,6 +33,7 @@ ILLEGAL_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 # Default Resolve offset: 1 hour
 DEFAULT_OFFSET_SECONDS = 3600
+DEFAULT_EDL_TITLE = "Timeline 1"
 
 
 def timecode_to_seconds(timecode: str) -> int:
@@ -196,7 +199,7 @@ def export_markers_edl(
         output_path: Directory to write EDL file.
         config: Application configuration (for fps).
         video_id: Optional video ID for filename fallback.
-        stream_title: Optional stream title for filename and header.
+        stream_title: Optional stream title for filename.
         stream_date: Optional stream date (YYYY-MM-DD).
         timecode_offset_seconds: Offset in seconds (default 3600 = +1 hour).
         logger: Optional logger.
@@ -214,14 +217,6 @@ def export_markers_edl(
     )
     file_path = output_path / filename
 
-    # Generate EDL title
-    if stream_title:
-        edl_title = sanitize_title(stream_title)
-        if stream_date:
-            edl_title = f"{stream_date} {edl_title}"
-    else:
-        edl_title = "Timeline 1"
-
     fps = config.timecode_fps
 
     if logger:
@@ -231,20 +226,21 @@ def export_markers_edl(
             logger.info("Applying timecode offset: +%d seconds (%s)", timecode_offset_seconds, offset_tc)
 
     # Build EDL content
-    lines = [
-        f"TITLE: {edl_title}",
-        "FCM: NON-DROP FRAME",
+    lines: list[str] = [
+        "EDL",
+        f"Title: {DEFAULT_EDL_TITLE}",
+        "FCM: NON-DROP-FRAME",
         "",
     ]
 
-    for i, marker in enumerate(markers, start=1):
+    for i, marker in enumerate(markers, start=0):
         # Convert position to timecode with offset
         start_tc = seconds_to_timecode(marker.position_seconds, fps, timecode_offset_seconds)
         end_tc = add_one_frame(start_tc)
 
         # Event line format:
-        # {idx:03}  001      V     C        {startTC} {endTC} {startTC} {endTC}
-        event_line = f"{i:03d}  001      V     C        {start_tc} {end_tc} {start_tc} {end_tc}"
+        # {idx:03}  001      V    C        {startTC} {endTC} {startTC} {endTC}
+        event_line = f"{i:03d}  001      V    C        {start_tc} {end_tc} {start_tc} {end_tc}  "
         lines.append(event_line)
 
         # Resolve marker metadata line

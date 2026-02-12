@@ -31,6 +31,11 @@ class StartupError(Exception):
     pass
 
 
+def _quote_command_path(path: str | Path) -> str:
+    """Quote a command path for registry command strings."""
+    return f'"{str(path)}"'
+
+
 def is_startup_enabled() -> bool:
     """
     Check if app is set to start on Windows login.
@@ -134,15 +139,16 @@ def get_startup_command() -> str:
     """
     if getattr(sys, "frozen", False):
         # Packaged exe: use executable directly
-        return f'"{sys.executable}"'
+        exe_path = Path(sys.executable).resolve()
+        return _quote_command_path(exe_path)
 
     # Running from source: prefer pythonw.exe to avoid console window
     python_dir = Path(sys.executable).parent
     pythonw = python_dir / "pythonw.exe"
 
     if pythonw.exists():
-        interpreter = str(pythonw)
+        interpreter = pythonw.resolve()
     else:
-        interpreter = sys.executable
+        interpreter = Path(sys.executable).resolve()
 
-    return f'"{interpreter}" -m twitch_marker_agent.app'
+    return f'{_quote_command_path(interpreter)} -m twitch_marker_agent.app'

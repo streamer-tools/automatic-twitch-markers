@@ -279,6 +279,7 @@ def run_manual_fetch(
     )
     from twitch_marker_agent.core.export_csv import export_markers_csv
     from twitch_marker_agent.core.export_edl import export_markers_edl
+    from twitch_marker_agent.core.auth_identity import resolve_broadcaster_id
 
     # Step 1: Get valid access token
     try:
@@ -290,6 +291,14 @@ def run_manual_fetch(
             message="Not logged in. Run auth-login first.",
         )
 
+    broadcaster_id = resolve_broadcaster_id(config, state_store)
+    if not broadcaster_id:
+        logger.warning("Manual fetch failed: broadcaster identity missing")
+        return ManualFetchResult(
+            success=False,
+            message="No broadcaster identity found. Authenticate with Twitch.",
+        )
+
     # Step 2: Get latest video ID
     logger.info("Manual fetch: getting latest video ID")
     try:
@@ -297,7 +306,7 @@ def run_manual_fetch(
             http_client=http_client,
             config=config,
             access_token=access_token,
-            user_id=config.broadcaster_id,
+            user_id=broadcaster_id,
             logger=logger,
         )
     except Exception as e:
@@ -326,7 +335,7 @@ def run_manual_fetch(
             http_client=http_client,
             config=config,
             access_token=access_token,
-            user_id=config.broadcaster_id,
+            user_id=broadcaster_id,
             video_id=video_id,
             logger=logger,
         )
@@ -625,6 +634,7 @@ def run_multi_fetch(
         timecode_to_seconds,
         DEFAULT_OFFSET_SECONDS,
     )
+    from twitch_marker_agent.core.auth_identity import resolve_broadcaster_id
     
     # Validate date range
     is_valid, error_msg = validate_date_range(start_date, end_date)
@@ -638,11 +648,19 @@ def run_multi_fetch(
     except TokenRefreshError:
         logger.warning("Multi-fetch failed: not authenticated")
         return MultiFetchResult(success=False, message="Not logged in. Run auth-login first.")
+
+    broadcaster_id = resolve_broadcaster_id(config, state_store)
+    if not broadcaster_id:
+        logger.warning("Multi-fetch failed: broadcaster identity missing")
+        return MultiFetchResult(
+            success=False,
+            message="No broadcaster identity found. Authenticate with Twitch.",
+        )
     
     # List videos in date range
     logger.info("Multi-fetch: listing videos from %s to %s", start_date.isoformat(), end_date.isoformat())
     try:
-        videos = list_videos_in_date_range(http_client=http_client, config=config, access_token=access_token, user_id=config.broadcaster_id, start_date=start_date, end_date=end_date, logger=logger)
+        videos = list_videos_in_date_range(http_client=http_client, config=config, access_token=access_token, user_id=broadcaster_id, start_date=start_date, end_date=end_date, logger=logger)
     except VideosFetchError as e:
         logger.error("Multi-fetch: failed to list videos: %s", type(e).__name__)
         return MultiFetchResult(success=False, message=f"Failed to list videos: {str(e)}")
@@ -679,6 +697,7 @@ def run_multi_fetch(
                 http_client=http_client,
                 config=config,
                 access_token=access_token,
+                user_id=broadcaster_id,
                 video_id=video.video_id,
                 logger=logger,
             )

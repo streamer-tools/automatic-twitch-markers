@@ -88,6 +88,7 @@ class TestRunMultiFetch(unittest.TestCase):
         self.tray_controller = tray_controller
         self.http_client = MagicMock()
         self.config = mock_config
+        self.config.broadcaster_id = "123456"
         self.state_store = MagicMock()
         self.oauth = MagicMock()
         self.output_dir = Path("test_output")
@@ -156,6 +157,30 @@ class TestRunMultiFetch(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("Not logged in", result.message)
+
+    def test_missing_broadcaster_identity(self):
+        """Should return clear error when broadcaster identity is unavailable."""
+        self.oauth.get_valid_user_access_token.return_value = "test_token"
+        self.config.broadcaster_id = ""
+        self.state_store.get_state.return_value = None
+
+        start_date = date.today() - timedelta(days=14)
+        end_date = date.today() - timedelta(days=7)
+
+        result = self.tray_controller.run_multi_fetch(
+            http_client=self.http_client,
+            config=self.config,
+            state_store=self.state_store,
+            oauth=self.oauth,
+            output_dir=self.output_dir,
+            export_formats=self.export_formats,
+            start_date=start_date,
+            end_date=end_date,
+            logger=self.logger,
+        )
+
+        self.assertFalse(result.success)
+        self.assertIn("broadcaster identity", result.message.lower())
 
     def test_export_call_signature_csv(self):
         """Should call export_markers_csv with correct kwargs (output_path, config, video_id)."""
@@ -328,6 +353,63 @@ class TestRunMultiFetch(unittest.TestCase):
             # VOD should be counted as failed, not successful
             self.assertEqual(result.failed_vods, 1)
             self.assertEqual(result.successful_vods, 0)
+
+    def test_fetch_markers_passes_broadcaster_user_id(self):
+        """Multi-fetch should pass broadcaster_id for marker user_type inference."""
+        from twitch_marker_agent.core.videos_api import ArchivedVideo
+        from twitch_marker_agent.core.markers_api import MarkerVideo, Marker
+        from datetime import datetime, timezone
+
+        self.oauth.get_valid_user_access_token.return_value = "test_token"
+        self.config.resolve_offset_enabled = False
+
+        test_video = ArchivedVideo(
+            video_id="video999",
+            title="User Type Test",
+            created_at=datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc),
+            url="https://twitch.tv/videos/video999",
+        )
+        test_marker = Marker(
+            id="marker1",
+            created_at="2024-01-15T12:01:40Z",
+            position_seconds=100,
+            description="Test",
+            user_type="Broadcaster",
+            username="testuser",
+        )
+        test_marker_video = MarkerVideo(video_id="video999", markers=[test_marker])
+
+        start_date = date.today() - timedelta(days=14)
+        end_date = date.today() - timedelta(days=7)
+
+        with unittest.mock.patch(
+            "twitch_marker_agent.core.videos_api.list_videos_in_date_range"
+        ) as mock_list, unittest.mock.patch(
+            "twitch_marker_agent.core.markers_api.get_stream_markers"
+        ) as mock_markers, unittest.mock.patch(
+            "twitch_marker_agent.core.export_csv.export_markers_csv"
+        ) as mock_csv:
+            mock_list.return_value = [test_video]
+            mock_markers.return_value = [test_marker_video]
+            mock_csv.return_value = Path("test.csv")
+
+            self.tray_controller.run_multi_fetch(
+                http_client=self.http_client,
+                config=self.config,
+                state_store=self.state_store,
+                oauth=self.oauth,
+                output_dir=self.output_dir,
+                export_formats=("csv",),
+                start_date=start_date,
+                end_date=end_date,
+                logger=self.logger,
+            )
+
+            mock_markers.assert_called_once()
+            self.assertEqual(
+                mock_markers.call_args.kwargs.get("user_id"),
+                self.config.broadcaster_id,
+            )
 
 
 if __name__ == "__main__":

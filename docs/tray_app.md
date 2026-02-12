@@ -47,6 +47,12 @@ Your EDL preference is saved and persists across restarts.
 ### Windows Startup
 Enable **"Start on Windows Login"** to automatically launch the tray app when you sign in to Windows.
 
+### Authentication Bootstrap
+- Tray auth uses Twitch Device Code Flow.
+- After successful auth, the app fetches the authenticated user via Helix `/users`.
+- Broadcaster identity is persisted in `StateStore`; `config.json` is updated only when `broadcaster_id` is empty.
+- The auth dialog auto-closes on success and a tray notification shows `Authenticated as <display_name>`.
+
 ## Default Behavior
 
 - EDL export: **Disabled** (CSV-only)
@@ -55,7 +61,11 @@ Enable **"Start on Windows Login"** to automatically launch the tray app when yo
 
 ## Configuration
 
-The tray app loads settings from `local.config.json`. See the main README for configuration details.
+The tray app loads settings from `config.json` in the runtime base directory:
+- Frozen exe: directory containing `TwitchMarkerAgent.exe`
+- Dev mode: current working directory (`Path.cwd()`)
+
+See the main README for configuration details.
 
 ## Tips
 

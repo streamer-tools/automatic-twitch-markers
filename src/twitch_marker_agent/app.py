@@ -358,6 +358,7 @@ def run_tray_app(
     http_client: "requests.Session",
     oauth: "TwitchOAuth",
     logger: logging.Logger,
+    config_path: Path,
 ) -> None:
     """
     Run the tray application main loop.
@@ -370,6 +371,7 @@ def run_tray_app(
         http_client: HTTP client.
         oauth: OAuth client.
         logger: Logger instance.
+        config_path: Runtime config.json path.
     """
     # Initialize state
     state = TrayState()
@@ -669,6 +671,13 @@ def run_tray_app(
                 DeviceCodeExpiredError,
                 DeviceAuthDeniedError,
             )
+            from twitch_marker_agent.core.auth_identity import (
+                BroadcasterIdentityError,
+                fetch_authenticated_user,
+                persist_broadcaster_identity,
+            )
+            from twitch_marker_agent.core.config import write_broadcaster_id_if_empty
+            from twitch_marker_agent.core.twitch_oauth import TwitchOAuth
 
             device_response = start_device_auth_flow(
                 client_id=client_id,
@@ -684,7 +693,7 @@ def run_tray_app(
             device_auth_state.verification_uri = device_response.verification_uri
             update_menu()
 
-            # Show dialog and start polling in background
+            # Create dialog before starting poll worker to avoid close race.
             from twitch_marker_agent.ui.device_auth_dialog import DeviceAuthDialog
 
             def on_cancel() -> None:
@@ -692,13 +701,24 @@ def run_tray_app(
                 if device_auth_state.cancel_event:
                     device_auth_state.cancel_event.set()
 
+            dialog = DeviceAuthDialog(
+                parent=None,
+                user_code=device_response.user_code,
+                verification_uri=device_response.verification_uri,
+                verification_uri_complete=device_response.verification_uri_complete,
+                expires_in=device_response.expires_in,
+                on_cancel=on_cancel,
+                auto_open_browser=True,
+                auto_copy_code=True,
+            )
+
             # Create polling thread
             poll_result: AuthStatus | None = None
             poll_error: str | None = None
 
             def poll_worker() -> None:
                 """Background worker to poll for token."""
-                nonlocal poll_result, poll_error
+                nonlocal poll_result, poll_error, cached_auth_status
                 try:
                     poll_result = complete_device_auth_flow(
                         client_id=client_id,
@@ -711,43 +731,54 @@ def run_tray_app(
                         logger=logger,
                         cancel_event=device_auth_state.cancel_event,
                     )
-                    # Success - close dialog
-                    if dialog:
-                        dialog.close_success()
+
+                    # Bootstrap broadcaster identity from authenticated user.
+                    access_token = state_store.get_token(TwitchOAuth.TOKEN_KEY_ACCESS)
+                    if access_token:
+                        try:
+                            identity = fetch_authenticated_user(
+                                http_client=http_client,
+                                client_id=client_id,
+                                access_token=access_token,
+                                logger=logger,
+                            )
+                            persist_broadcaster_identity(state_store, identity)
+                            try:
+                                write_broadcaster_id_if_empty(config_path, identity.user_id)
+                            except Exception:
+                                logger.debug("Could not persist broadcaster_id to config file")
+                            cached_auth_status = AuthStatus(
+                                is_authenticated=True,
+                                display_name=identity.display_name,
+                                user_id=identity.user_id,
+                            )
+                        except BroadcasterIdentityError as e:
+                            logger.warning("Authenticated user lookup failed: %s", str(e))
+                            cached_auth_status = poll_result
+                    else:
+                        cached_auth_status = poll_result
+
+                    dialog.close_success()
                 except DeviceAuthCancelledError:
                     poll_error = "cancelled"
                 except DeviceCodeExpiredError:
                     poll_error = "Code expired. Please try again."
-                    if dialog:
-                        dialog.close_error(poll_error)
+                    dialog.close_error(poll_error)
                 except DeviceAuthDeniedError:
                     poll_error = "Authorization denied."
-                    if dialog:
-                        dialog.close_error(poll_error)
+                    dialog.close_error(poll_error)
                 except DeviceAuthError as e:
                     poll_error = str(e)
-                    if dialog:
-                        dialog.close_error(poll_error)
+                    dialog.close_error(poll_error)
                 except Exception as e:
                     poll_error = f"Authentication failed: {type(e).__name__}"
-                    if dialog:
-                        dialog.close_error(poll_error)
+                    dialog.close_error(poll_error)
 
             # Start polling thread
             poll_thread = threading.Thread(target=poll_worker, daemon=True)
             poll_thread.start()
 
-            # Show dialog (blocks until closed)
-            dialog = DeviceAuthDialog(
-                parent=None,
-                user_code=device_response.user_code,
-                verification_uri=device_response.verification_uri,
-                verification_uri_complete=device_response.verification_uri_complete,
-                expires_in=device_response.expires_in,
-                on_cancel=on_cancel,
-                auto_open_browser=True,
-                auto_copy_code=True,
-            )
+            # Show dialog (blocks until closed by success/cancel/error)
             dialog.show()
 
             # Wait for poll thread to finish
@@ -755,12 +786,13 @@ def run_tray_app(
 
             # Handle result
             if poll_result:
-                cached_auth_status = poll_result
+                if cached_auth_status is None:
+                    cached_auth_status = poll_result
                 logger.info("Device auth completed successfully")
                 if icon:
                     try:
-                        name = poll_result.display_name or "Twitch"
-                        icon.notify(f"Connected as {name}", "Authentication Successful")
+                        name = cached_auth_status.display_name or "Twitch"
+                        icon.notify(f"Authenticated as {name}", "Twitch Markers")
                     except Exception:
                         pass
             elif poll_error and poll_error != "cancelled":
@@ -852,14 +884,25 @@ def main() -> None:
 
     from twitch_marker_agent.core.config import load_config
     from twitch_marker_agent.core.logging_setup import setup_logging
+    from twitch_marker_agent.core.runtime_paths import build_runtime_paths
     from twitch_marker_agent.core.state_store import StateStore
     from twitch_marker_agent.core.twitch_oauth import TwitchOAuth
 
+    runtime_paths = build_runtime_paths()
+
     # Load configuration
-    config = load_config("local.config.json")
+    config = load_config(
+        runtime_paths.config_path,
+        base_dir=runtime_paths.base_dir,
+        allow_empty_broadcaster_id=True,
+    )
 
     # Setup logging
-    logger = setup_logging(config, logger_name="twitch_marker_agent.tray")
+    logger = setup_logging(
+        config,
+        log_dir=runtime_paths.logs_dir,
+        logger_name="twitch_marker_agent.tray",
+    )
 
     # Initialize state store
     state_store = StateStore(config.state_db_path)
@@ -883,6 +926,7 @@ def main() -> None:
             http_client=http_client,
             oauth=oauth,
             logger=logger,
+            config_path=runtime_paths.config_path,
         )
     finally:
         state_store.close()

@@ -2,7 +2,7 @@
 Tests for EDL export functionality.
 
 Tests verify:
-- EDL header format (TITLE:, FCM:)
+- EDL preamble format (EDL, Title, FCM)
 - Event line format with correct timecode
 - Resolve marker metadata lines
 - Timecode offset (0s vs 3600s)
@@ -235,7 +235,7 @@ class TestExportMarkersEdl(unittest.TestCase):
         ]
 
     def test_header_format(self) -> None:
-        """EDL should have TITLE: and FCM: header lines."""
+        """EDL should include the Resolve-compatible preamble lines."""
         markers = self._create_markers()
         file_path = export_markers_edl(
             markers=markers,
@@ -250,8 +250,11 @@ class TestExportMarkersEdl(unittest.TestCase):
         content = file_path.read_text(encoding="utf-8")
         lines = content.split("\n")
 
-        self.assertIn("TITLE:", lines[0])
-        self.assertEqual(lines[1], "FCM: NON-DROP FRAME")
+        self.assertEqual(lines[0], "EDL")
+        self.assertEqual(lines[1], "Title: Timeline 1")
+        self.assertEqual(lines[2], "FCM: NON-DROP-FRAME")
+        self.assertEqual(lines[3], "")
+        self.assertTrue(lines[4].startswith("000  001      V    C"))
 
     def test_event_line_format(self) -> None:
         """Event lines should have correct format."""
@@ -266,7 +269,7 @@ class TestExportMarkersEdl(unittest.TestCase):
 
         content = file_path.read_text(encoding="utf-8")
         # First marker at 5400s = 01:30:00
-        self.assertIn("001  001      V     C        01:30:00:00 01:30:00:01", content)
+        self.assertIn("000  001      V    C        01:30:00:00 01:30:00:01", content)
 
     def test_marker_metadata_line(self) -> None:
         """Should include Resolve marker metadata lines."""

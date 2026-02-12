@@ -124,12 +124,16 @@ def _build_auth_headers(client_id: str, access_token: str) -> dict[str, str]:
     }
 
 
-def parse_markers_response(response_data: dict[str, Any]) -> list[MarkerVideo]:
+def parse_markers_response(
+    response_data: dict[str, Any],
+    broadcaster_user_id: str | None = None,
+) -> list[MarkerVideo]:
     """
     Parse Helix API response into MarkerVideo objects.
 
     Args:
         response_data: Raw JSON response from Get Stream Markers.
+        broadcaster_user_id: Broadcaster user ID used to infer marker user_type.
 
     Returns:
         List of MarkerVideo objects.
@@ -137,6 +141,14 @@ def parse_markers_response(response_data: dict[str, Any]) -> list[MarkerVideo]:
     results: list[MarkerVideo] = []
 
     for user_data in response_data.get("data", []):
+        user_id = user_data.get("user_id")
+        username = (
+            user_data.get("user_name")
+            or user_data.get("user_login")
+            or Marker.username
+        )
+        user_type = "Broadcaster" if broadcaster_user_id and user_id == broadcaster_user_id else "Editor"
+
         for video_data in user_data.get("videos", []):
             markers = [
                 Marker(
@@ -144,6 +156,8 @@ def parse_markers_response(response_data: dict[str, Any]) -> list[MarkerVideo]:
                     created_at=m["created_at"],
                     position_seconds=m["position_seconds"],
                     description=m.get("description", ""),
+                    user_type=user_type,
+                    username=username,
                 )
                 for m in video_data.get("markers", [])
             ]
@@ -279,7 +293,10 @@ def get_stream_markers(
     # Parse success response
     try:
         response_data = response.json()
-        marker_videos = parse_markers_response(response_data)
+        marker_videos = parse_markers_response(
+            response_data,
+            broadcaster_user_id=user_id,
+        )
         total_markers = sum(len(mv.markers) for mv in marker_videos)
         log.info("Retrieved %d markers from %d videos", total_markers, len(marker_videos))
         return marker_videos
