@@ -10,8 +10,12 @@ from pathlib import Path
 from twitch_marker_agent.core.config import (
     AppConfig,
     RetryConfig,
+    ensure_config_exists,
     load_config,
     get_logging_level,
+    is_placeholder_client_id,
+    resolve_client_id_seed,
+    write_bootstrap_template,
     write_broadcaster_id_if_empty,
 )
 
@@ -225,6 +229,166 @@ class TestLoadConfig(unittest.TestCase):
 
         wrote_again = write_broadcaster_id_if_empty(config_path, "99999")
         self.assertFalse(wrote_again)
+
+    def test_ensure_config_exists_creates_missing_file(self) -> None:
+        """Should create config from bootstrap template when missing."""
+        config_path = Path(self.temp_dir) / "missing_config.json"
+
+        created = ensure_config_exists(config_path)
+
+        self.assertTrue(created)
+        self.assertTrue(config_path.exists())
+        with config_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertIn("client_id", data)
+        self.assertTrue(str(data["client_id"]).strip())
+
+    def test_ensure_config_exists_does_not_overwrite_existing(self) -> None:
+        """Should not overwrite existing config files."""
+        config_path = self._write_config(
+            {
+                "client_id": "existing_client",
+                "broadcaster_id": "123",
+            }
+        )
+
+        created = ensure_config_exists(config_path, client_id_seed="seeded_client")
+
+        self.assertFalse(created)
+        loaded = load_config(config_path)
+        self.assertEqual(loaded.client_id, "existing_client")
+
+    def test_ensure_config_exists_uses_seeded_client_id(self) -> None:
+        """Should write provided client_id seed when creating config."""
+        config_path = Path(self.temp_dir) / "seeded_config.json"
+
+        ensure_config_exists(config_path, client_id_seed="seed_client_id")
+
+        with config_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual(data["client_id"], "seed_client_id")
+
+    def test_invalid_existing_json_still_errors(self) -> None:
+        """Invalid existing JSON should still fail load_config."""
+        config_path = Path(self.temp_dir) / "broken_config.json"
+        config_path.write_text("{invalid json", encoding="utf-8")
+
+        created = ensure_config_exists(config_path)
+        self.assertFalse(created)
+
+        with self.assertRaises(json.JSONDecodeError):
+            load_config(config_path)
+
+
+class TestBootstrapHelpers(unittest.TestCase):
+    """Tests for bootstrap helper functions."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self) -> None:
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_is_placeholder_client_id_detects_known_values(self) -> None:
+        """Should identify blank and known placeholder client_id values."""
+        self.assertTrue(is_placeholder_client_id(""))
+        self.assertTrue(is_placeholder_client_id("   "))
+        self.assertTrue(is_placeholder_client_id("YOUR_TWITCH_CLIENT_ID"))
+        self.assertTrue(is_placeholder_client_id("your_client_id_here"))
+        self.assertTrue(is_placeholder_client_id("your_client_id"))
+        self.assertTrue(is_placeholder_client_id("your_client_id_here..."))
+        self.assertFalse(is_placeholder_client_id("real_client_id"))
+
+    def test_write_bootstrap_template_uses_non_empty_placeholder(self) -> None:
+        """Generated bootstrap template should have non-empty placeholder client_id."""
+        output_path = Path(self.temp_dir) / "config.bootstrap.json"
+
+        write_bootstrap_template(output_path)
+
+        with output_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        client_id = str(data.get("client_id", ""))
+        self.assertTrue(client_id.strip())
+        self.assertTrue(is_placeholder_client_id(client_id))
+
+    def test_write_bootstrap_template_uses_seeded_client_id(self) -> None:
+        """Generated bootstrap template should honor client_id seed."""
+        output_path = Path(self.temp_dir) / "config.bootstrap.json"
+
+        write_bootstrap_template(output_path, client_id_seed="seeded123")
+
+        with output_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual(data["client_id"], "seeded123")
+
+    def test_resolve_client_id_seed_prefers_explicit_non_placeholder(self) -> None:
+        """Explicit non-placeholder seed should take precedence over local config."""
+        local_config_path = Path(self.temp_dir) / "local.config.json"
+        local_config_path.write_text(
+            json.dumps({"client_id": "local_client"}),
+            encoding="utf-8",
+        )
+
+        resolved = resolve_client_id_seed(
+            "explicit_client",
+            local_config_path=local_config_path,
+        )
+
+        self.assertEqual(resolved, "explicit_client")
+
+    def test_resolve_client_id_seed_ignores_placeholder_explicit_and_uses_local(self) -> None:
+        """Placeholder explicit seed should fall back to valid local client_id."""
+        local_config_path = Path(self.temp_dir) / "local.config.json"
+        local_config_path.write_text(
+            json.dumps({"client_id": "local_client"}),
+            encoding="utf-8",
+        )
+
+        resolved = resolve_client_id_seed(
+            "YOUR_TWITCH_CLIENT_ID",
+            local_config_path=local_config_path,
+        )
+
+        self.assertEqual(resolved, "local_client")
+
+    def test_resolve_client_id_seed_missing_local_returns_none(self) -> None:
+        """Missing local config should return None when explicit seed is unusable."""
+        local_config_path = Path(self.temp_dir) / "missing-local.config.json"
+
+        resolved = resolve_client_id_seed(
+            "YOUR_TWITCH_CLIENT_ID",
+            local_config_path=local_config_path,
+        )
+
+        self.assertIsNone(resolved)
+
+    def test_resolve_client_id_seed_malformed_local_returns_none(self) -> None:
+        """Malformed local config should return None without raising."""
+        local_config_path = Path(self.temp_dir) / "local.config.json"
+        local_config_path.write_text("{not json", encoding="utf-8")
+
+        resolved = resolve_client_id_seed(
+            None,
+            local_config_path=local_config_path,
+        )
+
+        self.assertIsNone(resolved)
+
+    def test_resolve_client_id_seed_missing_client_id_returns_none(self) -> None:
+        """Local config without client_id should return None."""
+        local_config_path = Path(self.temp_dir) / "local.config.json"
+        local_config_path.write_text(
+            json.dumps({"redirect_uri": "http://localhost:3000/callback"}),
+            encoding="utf-8",
+        )
+
+        resolved = resolve_client_id_seed(
+            None,
+            local_config_path=local_config_path,
+        )
+
+        self.assertIsNone(resolved)
 
 
 class TestGetLoggingLevel(unittest.TestCase):

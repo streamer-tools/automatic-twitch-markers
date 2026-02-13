@@ -2,7 +2,8 @@
 # Run from repo root: .\scripts\build_exe.ps1
 
 param(
-    [switch]$Clean = $false
+    [switch]$Clean = $false,
+    [switch]$AllowPlaceholderClientId = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,6 +40,25 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# Generate bootstrap config template for packaging
+Write-Host "Generating bootstrap config template..." -ForegroundColor Green
+$allowPlaceholderBuild = $AllowPlaceholderClientId -or ($env:TWITCH_MARKER_AGENT_ALLOW_PLACEHOLDER_BUILD -eq "1")
+python -c "from pathlib import Path; import os; from twitch_marker_agent.core.config import resolve_client_id_seed, write_bootstrap_template; seed = resolve_client_id_seed(os.getenv('TWITCH_MARKER_AGENT_CLIENT_ID'), local_config_path=Path('local.config.json')); Path('build').mkdir(parents=True, exist_ok=True); write_bootstrap_template(Path('build/config.bootstrap.json'), client_id_seed=seed)"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to generate bootstrap config template"
+    exit 1
+}
+
+if (-not $allowPlaceholderBuild) {
+    Write-Host "Validating bootstrap client_id..." -ForegroundColor Green
+    python -c "import json, sys; from pathlib import Path; from twitch_marker_agent.core.config import is_placeholder_client_id; data = json.loads(Path('build/config.bootstrap.json').read_text(encoding='utf-8')); client_id = str(data.get('client_id', '')).strip(); ok = not is_placeholder_client_id(client_id); print('Build blocked: bootstrap client_id is placeholder. Set TWITCH_MARKER_AGENT_CLIENT_ID or set client_id in local.config.json.', file=sys.stderr) if not ok else None; sys.exit(0 if ok else 1)"
+    if ($LASTEXITCODE -ne 0) {
+        exit 1
+    }
+} else {
+    Write-Warning "Placeholder client_id build allowed by override. Do not distribute this build."
+}
+
 # Build exe with PyInstaller
 Write-Host "Building TwitchMarkerAgent.exe..." -ForegroundColor Green
 pyinstaller `
@@ -50,6 +70,7 @@ pyinstaller `
     --collect-submodules PIL `
     --hidden-import pystray._win32 `
     --hidden-import ttkbootstrap `
+    --add-data "build\config.bootstrap.json;bootstrap" `
     src\twitch_marker_agent\app.py
 
 if ($LASTEXITCODE -ne 0) {

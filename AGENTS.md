@@ -75,6 +75,7 @@ During scaffold development, modules are implemented incrementally:
 - Auth identity bootstrap (`core/auth_identity.py` - fetch/persist/resolve broadcaster identity)
 - Token maintenance (`twitch_oauth.py` - `refresh_access_token`, `validate_access_token`, `get_valid_user_access_token`)
 - Configuration loading (`config.py`)
+- First-launch config bootstrap (`config.py` - `ensure_config_exists`, `write_bootstrap_template`, `resolve_client_id_seed`, placeholder checks)
 - Runtime path resolution (`runtime_paths.py` - EXE-relative/CWD-relative config/log/state paths)
 - State storage (`state_store.py`)
 - Retry utility (`retry.py`)
@@ -160,7 +161,7 @@ python -c "from twitch_marker_agent.core import agent"
 
 | File | Purpose |
 |------|---------|
-| `config.py` | Load/validate config.json, expose `AppConfig` dataclass |
+| `config.py` | Load/validate config.json, expose `AppConfig`, and bootstrap config template creation helpers |
 | `runtime_paths.py` | Resolve runtime base/config/log/state paths for portable execution |
 | `auth_identity.py` | Fetch/persist authenticated broadcaster identity and resolve broadcaster_id |
 | `state_store.py` | SQLite wrapper for state + token storage |

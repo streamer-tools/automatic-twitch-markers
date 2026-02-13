@@ -29,19 +29,42 @@ The project uses [PyInstaller](https://pyinstaller.org/) to create a standalone 
    .\scripts\build_exe.ps1
    ```
 
+   Recommended seed for build output:
+   ```powershell
+   $env:TWITCH_MARKER_AGENT_CLIENT_ID = "your_real_client_id"
+   .\scripts\build_exe.ps1
+   ```
+
+   Local fallback:
+   - If `TWITCH_MARKER_AGENT_CLIENT_ID` is unset, the build script attempts `local.config.json` -> `client_id`.
+   - If both are missing/placeholder, build fails by default.
+
 3. **Clean build** (optional, removes previous build artifacts):
    ```powershell
    .\scripts\build_exe.ps1 -Clean
    ```
 
+4. **Dev-only placeholder override** (do not distribute):
+   ```powershell
+   .\scripts\build_exe.ps1 -AllowPlaceholderClientId
+   # or
+   $env:TWITCH_MARKER_AGENT_ALLOW_PLACEHOLDER_BUILD = "1"
+   .\scripts\build_exe.ps1
+   ```
+
 ### What the Script Does
 - Installs project in editable mode (`pip install -e .`)
 - Installs PyInstaller as a build-only tool
+- Generates `build/config.bootstrap.json` using `write_bootstrap_template(...)`
+  - Seeds `client_id` from `TWITCH_MARKER_AGENT_CLIENT_ID` or `local.config.json` fallback
+- Validates generated bootstrap config and blocks build if `client_id` is still placeholder
+  - Local dev can explicitly override this check; release workflow does not allow override
 - Runs PyInstaller with:
   - `--onefile`: Single executable
   - `--noconsole`: No console window (windowed app)
   - `--name TwitchMarkerAgent`: Output name
   - `--collect-submodules pystray,PIL`: Bundle tray/image libraries
+  - `--add-data "build\config.bootstrap.json;bootstrap"`: Bundle bootstrap config template
   - Entry point: `src\twitch_marker_agent\app.py`
 
 ### Output Location
@@ -56,7 +79,8 @@ dist/
 ```
 - Tray icon should appear in system tray
 - Right-click for menu (Auto Mode, Fetch Markers, etc.)
-- Requires `config.json` next to the exe with valid `client_id` (tray device auth does not require `client_secret`)
+- If `config.json` is missing, it is auto-created on first launch
+- If `client_id` is still placeholder, auth is blocked and indicates an unseeded build
 
 ---
 
@@ -72,10 +96,12 @@ dist/
 3. Install project dependencies
 4. Run full test suite (`python -m unittest discover -s tests -v`)
 5. Install PyInstaller
-6. Build exe with same configuration as local script
-7. Package as `TwitchMarkerAgent-windows.zip`
-8. Upload workflow artifact (always)
-9. Attach zip to GitHub Release (only for tag builds)
+6. Generate bootstrap config template (`build/config.bootstrap.json`) from repository `TWITCH_MARKER_AGENT_CLIENT_ID` variable/secret
+7. Validate bootstrap `client_id` is non-placeholder (fails fast if not)
+8. Build exe with same configuration as local script (includes bundled bootstrap template)
+9. Package as `TwitchMarkerAgent-windows.zip`
+10. Upload workflow artifact (always)
+11. Attach zip to GitHub Release (only for tag builds)
 
 ### Accessing Build Artifacts
 
@@ -151,6 +177,8 @@ pyinstaller `
     --collect-submodules pystray `
     --collect-submodules PIL `
     --hidden-import pystray._win32 `
+    --hidden-import ttkbootstrap `
+    --add-data "build\config.bootstrap.json;bootstrap" `
     src\twitch_marker_agent\app.py
 ```
 

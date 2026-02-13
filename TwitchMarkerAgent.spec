@@ -10,7 +10,7 @@ a = Analysis(
     ['src\\twitch_marker_agent\\app.py'],
     pathex=['src'],
     binaries=[],
-    datas=[],
+    datas=[('build\\config.bootstrap.json', 'bootstrap')],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

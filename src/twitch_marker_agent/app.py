@@ -654,11 +654,19 @@ def run_tray_app(
         import os
         client_id = os.environ.get("TWITCH_MARKER_AGENT_CLIENT_ID", config.client_id)
 
-        if not client_id or client_id == "your_client_id_here":
+        from twitch_marker_agent.core.config import is_placeholder_client_id
+
+        if is_placeholder_client_id(client_id):
             logger.error("Device auth: no valid client_id configured")
             if icon:
                 try:
-                    icon.notify("Configure client_id in config.json first", "Auth Error")
+                    icon.notify(
+                        "This build is missing the Twitch Client ID required for authentication. "
+                        "If you downloaded this build, please use the official release. "
+                        "If you built it yourself, set TWITCH_MARKER_AGENT_CLIENT_ID and rebuild. "
+                        f"Config: {config_path}",
+                        "Auth Error",
+                    )
                 except Exception:
                     pass
             return
@@ -882,13 +890,17 @@ def main() -> None:
     """
     import requests
 
-    from twitch_marker_agent.core.config import load_config
+    from twitch_marker_agent.core.config import ensure_config_exists, load_config
     from twitch_marker_agent.core.logging_setup import setup_logging
     from twitch_marker_agent.core.runtime_paths import build_runtime_paths
     from twitch_marker_agent.core.state_store import StateStore
     from twitch_marker_agent.core.twitch_oauth import TwitchOAuth
 
     runtime_paths = build_runtime_paths()
+    seed = os.getenv("TWITCH_MARKER_AGENT_CLIENT_ID")
+
+    # Bootstrap config on first launch if missing.
+    ensure_config_exists(runtime_paths.config_path, client_id_seed=seed)
 
     # Load configuration
     config = load_config(

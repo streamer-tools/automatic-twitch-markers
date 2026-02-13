@@ -9,9 +9,214 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+
+DEFAULT_CLIENT_ID_PLACEHOLDER = "YOUR_TWITCH_CLIENT_ID"
+DEFAULT_BROADCASTER_ID_PLACEHOLDER = "YOUR_BROADCASTER_USER_ID"
+_PLACEHOLDER_CLIENT_IDS = {
+    DEFAULT_CLIENT_ID_PLACEHOLDER.lower(),
+    "your_client_id_here",
+    "your_client_id",
+    "your_client_id_here...",
+}
+
+
+def _default_bootstrap_template() -> dict[str, Any]:
+    """Build an in-code fallback config template."""
+    return {
+        "client_id": DEFAULT_CLIENT_ID_PLACEHOLDER,
+        "client_secret": "YOUR_TWITCH_CLIENT_SECRET",
+        "redirect_uri": "http://localhost:3000/callback",
+        "broadcaster_id": DEFAULT_BROADCASTER_ID_PLACEHOLDER,
+        "output_dir": "./exports",
+        "export_formats": ["csv", "edl"],
+        "resolve_offset_enabled": True,
+        "resolve_offset_timecode": "01:00:00:00",
+        "timecode_fps": 60,
+        "log_level": "INFO",
+        "state_db_path": "./data/state.db",
+        "retry": {
+            "max_attempts": 5,
+            "base_delay_seconds": 1.0,
+            "max_delay_seconds": 60.0,
+        },
+    }
+
+
+def _normalize_client_id(value: str | None) -> str:
+    """Normalize client_id-like values for placeholder checks."""
+    if value is None:
+        return ""
+    return str(value).strip().lower()
+
+
+def is_placeholder_client_id(client_id: str) -> bool:
+    """
+    Check whether client_id is blank or a known placeholder value.
+
+    Args:
+        client_id: Candidate Twitch client_id value.
+
+    Returns:
+        True when value is blank or placeholder.
+    """
+    normalized = _normalize_client_id(client_id)
+    if not normalized:
+        return True
+    if normalized in _PLACEHOLDER_CLIENT_IDS:
+        return True
+    return normalized.startswith("your_client_id_here")
+
+
+def resolve_client_id_seed(
+    client_id_seed: str | None,
+    *,
+    local_config_path: Path | None = None,
+) -> str | None:
+    """
+    Resolve a usable client_id seed from explicit input or local config fallback.
+
+    Resolution order:
+    1. Provided ``client_id_seed`` if non-placeholder.
+    2. ``local_config_path`` JSON ``client_id`` if present and non-placeholder.
+    3. None
+
+    Args:
+        client_id_seed: Optional explicit seed value.
+        local_config_path: Optional fallback config file path.
+
+    Returns:
+        Resolved non-placeholder client_id, otherwise None.
+    """
+    if client_id_seed:
+        candidate = client_id_seed.strip()
+        if candidate and not is_placeholder_client_id(candidate):
+            return candidate
+
+    if local_config_path is None:
+        return None
+
+    try:
+        path = Path(local_config_path)
+        if not path.exists():
+            return None
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return None
+        client_id = str(data.get("client_id", "")).strip()
+        if not client_id or is_placeholder_client_id(client_id):
+            return None
+        return client_id
+    except Exception:
+        return None
+
+
+def _merge_template_data(
+    base_template: dict[str, Any],
+    override: dict[str, Any],
+) -> dict[str, Any]:
+    """Merge override template values into base template safely."""
+    merged = dict(base_template)
+    for key, value in override.items():
+        if key == "retry" and isinstance(value, dict):
+            retry_base = dict(base_template.get("retry", {}))
+            retry_base.update(value)
+            merged["retry"] = retry_base
+            continue
+        merged[key] = value
+    return merged
+
+
+def _load_frozen_bootstrap_template() -> dict[str, Any] | None:
+    """Load bundled bootstrap template from frozen PyInstaller data if present."""
+    if not getattr(sys, "frozen", False):
+        return None
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if not meipass:
+        return None
+
+    bootstrap_path = Path(meipass) / "bootstrap" / "config.bootstrap.json"
+    if not bootstrap_path.exists():
+        return None
+
+    try:
+        with bootstrap_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        return None
+    return None
+
+
+def _get_bootstrap_template_data(client_id_seed: str | None = None) -> dict[str, Any]:
+    """Resolve config template data from bundled source with fallback defaults."""
+    template = _default_bootstrap_template()
+    frozen_template = _load_frozen_bootstrap_template()
+    if frozen_template:
+        template = _merge_template_data(template, frozen_template)
+
+    if client_id_seed and not is_placeholder_client_id(client_id_seed):
+        template["client_id"] = client_id_seed.strip()
+    else:
+        candidate = str(template.get("client_id", "")).strip()
+        if is_placeholder_client_id(candidate):
+            template["client_id"] = DEFAULT_CLIENT_ID_PLACEHOLDER
+        else:
+            template["client_id"] = candidate
+
+    broadcaster_id = str(template.get("broadcaster_id", "")).strip()
+    if not broadcaster_id:
+        template["broadcaster_id"] = DEFAULT_BROADCASTER_ID_PLACEHOLDER
+
+    return template
+
+
+def write_bootstrap_template(output_path: Path, *, client_id_seed: str | None = None) -> None:
+    """
+    Write a bootstrap config template file used during packaging.
+
+    Args:
+        output_path: Destination file path.
+        client_id_seed: Optional seeded client_id.
+    """
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    data = _get_bootstrap_template_data(client_id_seed)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+
+
+def ensure_config_exists(config_path: Path, *, client_id_seed: str | None = None) -> bool:
+    """
+    Ensure config.json exists, creating from bootstrap template when missing.
+
+    Args:
+        config_path: Target config path.
+        client_id_seed: Optional seeded client_id.
+
+    Returns:
+        True when file was created, False when already present.
+    """
+    path = Path(config_path)
+    if path.exists():
+        return False
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = _get_bootstrap_template_data(client_id_seed)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+
+    return True
 
 
 @dataclass(frozen=True)
@@ -173,7 +378,7 @@ def write_broadcaster_id_if_empty(config_path: Path, broadcaster_id: str) -> boo
         data: dict[str, Any] = json.load(f)
 
     current = str(data.get("broadcaster_id", "")).strip()
-    if current and current != "YOUR_BROADCASTER_USER_ID":
+    if current and current != DEFAULT_BROADCASTER_ID_PLACEHOLDER:
         return False
 
     data["broadcaster_id"] = str(broadcaster_id).strip()

@@ -14,6 +14,10 @@
   - Tray App: Manual fetch, multi-fetch (date range), config persistence, auto mode start/stop
   - Broadcaster identity bootstrap after auth (`/helix/users` -> persisted in `StateStore`)
   - Portable runtime path anchoring (EXE-relative when frozen, CWD in dev)
+  - First-launch config bootstrap (`config.json` auto-created if missing)
+  - Build/runtime `client_id` seeding support via `TWITCH_MARKER_AGENT_CLIENT_ID`
+  - Build-time fallback seeding from `local.config.json` for local dev
+  - Build guard blocks placeholder `client_id` outputs unless explicit local dev override is enabled
   - Windows Startup: Registry-based "Run" key integration
   - Windows startup command uses absolute quoted path (no System32 CWD dependency)
   - Packaging: PyInstaller build script for standalone exe
@@ -34,8 +38,9 @@ Derived from `AGENTS.md`:
 ## 4. How to Run (Local)
 
 **Prerequisites**:
-- Edit `config.json` in the repo root (dev) or next to `TwitchMarkerAgent.exe` (frozen)
-- Set real `client_id` (tray device auth does not require `client_secret`)
+- `config.json` is auto-created on first run in repo root (dev) or next to `TwitchMarkerAgent.exe` (frozen)
+- Official release users should not need to set `client_id` manually
+- Local builders should set `TWITCH_MARKER_AGENT_CLIENT_ID` (or `local.config.json` `client_id`) before building
 - Leave `broadcaster_id` blank if desired; tray auth will auto-populate it after success
 - Virtual environment active (`.venv\Scripts\Activate.ps1`)
 

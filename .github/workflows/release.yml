@@ -33,6 +33,13 @@ jobs:
       - name: Install PyInstaller
         run: pip install pyinstaller
 
+      - name: Generate bootstrap config template
+        env:
+          TWITCH_MARKER_AGENT_CLIENT_ID: ${{ vars.TWITCH_MARKER_AGENT_CLIENT_ID || secrets.TWITCH_MARKER_AGENT_CLIENT_ID }}
+        run: |
+          python -c "from pathlib import Path; import os; from twitch_marker_agent.core.config import resolve_client_id_seed, write_bootstrap_template; seed = resolve_client_id_seed(os.getenv('TWITCH_MARKER_AGENT_CLIENT_ID'), local_config_path=Path('local.config.json')); Path('build').mkdir(parents=True, exist_ok=True); write_bootstrap_template(Path('build/config.bootstrap.json'), client_id_seed=seed)"
+          python -c "import json, sys; from pathlib import Path; from twitch_marker_agent.core.config import is_placeholder_client_id; data = json.loads(Path('build/config.bootstrap.json').read_text(encoding='utf-8')); client_id = str(data.get('client_id', '')).strip(); ok = not is_placeholder_client_id(client_id); print('Build blocked: bootstrap client_id is placeholder. Set TWITCH_MARKER_AGENT_CLIENT_ID repository variable or secret.', file=sys.stderr) if not ok else None; sys.exit(0 if ok else 1)"
+
       - name: Build executable
         run: |
           pyinstaller `
@@ -43,6 +50,8 @@ jobs:
             --collect-submodules pystray `
             --collect-submodules PIL `
             --hidden-import pystray._win32 `
+            --hidden-import ttkbootstrap `
+            --add-data "build\config.bootstrap.json;bootstrap" `
             src\twitch_marker_agent\app.py
 
       - name: Package artifact

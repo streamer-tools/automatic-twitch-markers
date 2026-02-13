@@ -39,11 +39,9 @@ class TestStartupError(unittest.TestCase):
 class TestIsStartupEnabled(unittest.TestCase):
     """Test is_startup_enabled function."""
 
-    @patch("twitch_marker_agent.platform.windows_startup.sys")
-    def test_returns_false_on_non_windows(self, mock_sys: MagicMock) -> None:
+    @patch.object(sys, "platform", "linux")
+    def test_returns_false_on_non_windows(self) -> None:
         """Should return False on non-Windows platforms."""
-        mock_sys.platform = "linux"
-
         from twitch_marker_agent.platform import windows_startup
 
         # Reload module to pick up mock

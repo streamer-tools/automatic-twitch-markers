@@ -59,7 +59,10 @@ This agent solves that by:
    ```
 
 4. **Configure** (see Configuration section below):
-   - Edit `config.json` with your Twitch app credentials (`client_id` required; `client_secret` optional for tray/device auth flow)
+   - `config.json` is auto-created on first launch if missing
+   - Official release users should not need to edit `client_id` manually
+   - For local builds, set `TWITCH_MARKER_AGENT_CLIENT_ID` (or set `client_id` in `local.config.json`) before building
+   - `client_secret` is optional for tray/device auth flow
 
 5. **Run tests** to verify installation:
    ```powershell
@@ -99,6 +102,7 @@ The tray app provides:
 > **Note:** Fetch and Auto Mode actions are disabled until you authenticate with Twitch. Other settings (output folder, EDL toggle, startup) remain accessible.
 
 **Building executable**: See [docs/packaging.md](docs/packaging.md) for instructions on creating a standalone Windows exe.
+Local builds require seeded `client_id` (`TWITCH_MARKER_AGENT_CLIENT_ID` or `local.config.json` fallback) and intentionally fail if placeholder remains, unless an explicit dev-only override is used.
 
 ## Configuration
 
@@ -109,12 +113,21 @@ Runtime paths are portable-only in 1.0:
 - Logs are written under `<base_dir>/logs/`
 - Default state DB path is `<base_dir>/data/state.db`
 
+If `<base_dir>/config.json` is missing, it is created automatically on startup:
+1. Start with bundled `bootstrap/config.bootstrap.json` (when packaged)
+2. Apply runtime `TWITCH_MARKER_AGENT_CLIENT_ID` override if provided
+3. Fall back to a non-empty placeholder client ID
+
+Auth is blocked while `client_id` is still a placeholder value.
+Official releases should ship with seeded `client_id`; placeholder values indicate a bad/unseeded build.
+Local build script enforces this by default and fails when placeholder remains (dev-only override exists for testing).
+
 | Key | Type | Description |
 |-----|------|-------------|
 | `client_id` | string | Twitch application client ID |
 | `client_secret` | string | Twitch application client secret (not required for tray/device auth flow) |
 | `redirect_uri` | string | OAuth redirect URI (default: `http://localhost:3000/callback`) |
-| `broadcaster_id` | string | Broadcaster user ID; may be left blank and auto-populated after successful tray device auth |
+| `broadcaster_id` | string | Broadcaster user ID; may be blank/placeholder and auto-populated after successful tray device auth |
 | `output_dir` | string | Directory for exported files |
 | `export_formats` | array | List of formats: `["csv", "edl"]` |
 | `resolve_offset_enabled` | boolean | Apply timecode offset for DaVinci Resolve |
@@ -242,8 +255,12 @@ The tray includes a folder picker to set the export destination:
 ### v0.9.0 (Unreleased)
 - **Portable Runtime + Auth Polish:**
   - Runtime paths are now deterministic and portable-only: `config.json`, logs, and relative state paths resolve from the exe directory (frozen) or `Path.cwd()` (dev)
+  - First-launch bootstrap now auto-creates `config.json` when missing (no startup failure on fresh portable folders)
+  - EXE packaging now bundles `bootstrap/config.bootstrap.json`; build seeding resolves `client_id` from `TWITCH_MARKER_AGENT_CLIENT_ID` first, then `local.config.json` fallback for local builds
+  - Local/CI builds now fail fast when bootstrap `client_id` is placeholder (unless local dev override is explicitly enabled)
+  - Tray/CLI auth gating copy now explicitly identifies unseeded builds and directs users to official seeded releases (or rebuild with `TWITCH_MARKER_AGENT_CLIENT_ID`)
   - Windows startup command now stores an absolute, quoted executable/interpreter path to avoid System32 working-directory path issues
-  - Tray device auth now auto-detects authenticated broadcaster identity via Helix `/users`, persists identity in `StateStore`, and writes `broadcaster_id` into `config.json` when empty
+  - Tray device auth now auto-detects authenticated broadcaster identity via Helix `/users`, persists identity in `StateStore`, and writes `broadcaster_id` into `config.json` when blank/placeholder
   - Tray auth dialog now auto-closes reliably on successful authentication and shows `Authenticated as <display_name>` notification
   - Manual fetch, multi-fetch, and auto-mode subscription flow resolve broadcaster ID from persisted state first, then config fallback, with clear re-auth guidance when missing
   - Tray device code flow does not require `client_secret` at runtime
