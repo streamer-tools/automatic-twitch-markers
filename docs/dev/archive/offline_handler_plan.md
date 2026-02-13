@@ -2,7 +2,7 @@
 
 **Goal:** Handle stream.offline EventSub notifications and trigger marker export.
 
-**Status:** ✅ RUN 2 Complete - Implementation Done
+**Status:** [DONE] RUN 2 Complete - Implementation Done
 
 ---
 
@@ -70,8 +70,8 @@ class EventSubMessage:
 **What exists:**
 | Module | Status | Notes |
 |--------|--------|-------|
-| `markers_api.py` | ✅ **IMPLEMENTED** | `get_stream_markers()`, `get_latest_video_id()` |
-| `export_csv.py` | ✅ **IMPLEMENTED** | `export_markers_csv()` works. |
+| `markers_api.py` | [DONE] **IMPLEMENTED** | `get_stream_markers()`, `get_latest_video_id()` |
+| `export_csv.py` | [DONE] **IMPLEMENTED** | `export_markers_csv()` works. |
 | `config.output_dir` | Exists | Output directory from config. |
 
 ---
@@ -81,7 +81,7 @@ class EventSubMessage:
 **Current scope:** `channel:manage:broadcast`
 
 **Required for Get Stream Markers:**
-- `channel:manage:broadcast` ✅ Included (also enables future broadcast management features)
+- `channel:manage:broadcast` [DONE] Included (also enables future broadcast management features)
 
 **Twitch docs confirm:** Required scope is `user:read:broadcast` OR `channel:manage:broadcast`
 
@@ -101,8 +101,8 @@ class EventSubMessage:
 | **Video-level** | `StateStore.get_state("processed_video:{broadcaster_id}:{video_id}")` | Persistent across restarts |
 
 **Implementation:**
-1. Check message_id against in-memory set → skip if seen
-2. After fetching video_id, check StateStore → skip if processed
+1. Check message_id against in-memory set -> skip if seen
+2. After fetching video_id, check StateStore -> skip if processed
 3. After successful export, store `processed_video:{broadcaster_id}:{video_id}` = timestamp
 
 **No StateStore schema changes:** Just new key pattern.
@@ -218,19 +218,19 @@ def get_latest_video_id(...) -> str | None:
 ### 8) Logging Policy
 
 **Never log:**
-- ❌ Tokens, auth headers
-- ❌ Full response bodies
-- ❌ Large payload JSON
+- [NO] Tokens, auth headers
+- [NO] Full response bodies
+- [NO] Large payload JSON
 
 **INFO level:**
-- ✅ "stream.offline received for broadcaster_id=X"
-- ✅ "Fetching markers for video_id=Y"
-- ✅ "Exported N markers to path/to/file.csv"
-- ✅ "Skipping duplicate video_id=Y (already processed)"
+- [DONE] "stream.offline received for broadcaster_id=X"
+- [DONE] "Fetching markers for video_id=Y"
+- [DONE] "Exported N markers to path/to/file.csv"
+- [DONE] "Skipping duplicate video_id=Y (already processed)"
 
 **DEBUG level:**
-- ✅ "Attempt 1/6: waiting for VOD markers..."
-- ✅ "Message message_id=abc already seen, skipping"
+- [DONE] "Attempt 1/6: waiting for VOD markers..."
+- [DONE] "Message message_id=abc already seen, skipping"
 
 ---
 
@@ -294,8 +294,8 @@ def get_latest_video_id(...) -> str | None:
 
 ## Out of Scope (This Step)
 
-- ❌ Full agent.py orchestration wiring
-- ❌ Tray app UI
-- ❌ EDL export (CSV only for this step)
-- ❌ Multiple broadcaster support
-- ❌ Config schema changes
+- [NO] Full agent.py orchestration wiring
+- [NO] Tray app UI
+- [NO] EDL export (CSV only for this step)
+- [NO] Multiple broadcaster support
+- [NO] Config schema changes

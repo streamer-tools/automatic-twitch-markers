@@ -1,6 +1,6 @@
 # RUN 1: EDL Toggle UX Simplification
 
-**Goal:** Simplify tray output format UX by making CSV implicit (always exported) and adding an "Additional Output Format" → "EDL" toggle that persists via StateStore.
+**Goal:** Simplify tray output format UX by making CSV implicit (always exported) and adding an "Additional Output Format" -> "EDL" toggle that persists via StateStore.
 
 ---
 
@@ -235,18 +235,18 @@ def get_manual_fetch_formats(
 ### New Tests (`test_tray_controller.py`)
 
 #### `TestGetEdlEnabled`
-- `test_returns_false_by_default` - StateStore empty → False
-- `test_returns_stored_true` - StateStore has "true" → True
-- `test_returns_stored_false` - StateStore has "false" → False
-- `test_handles_invalid_stored_value` - StateStore has garbage → False (fallback)
+- `test_returns_false_by_default` - StateStore empty -> False
+- `test_returns_stored_true` - StateStore has "true" -> True
+- `test_returns_stored_false` - StateStore has "false" -> False
+- `test_handles_invalid_stored_value` - StateStore has garbage -> False (fallback)
 
 #### `TestSetEdlEnabled`
-- `test_persists_true` - set_edl_enabled(True) → StateStore stores "true"
-- `test_persists_false` - set_edl_enabled(False) → StateStore stores "false"
+- `test_persists_true` - set_edl_enabled(True) -> StateStore stores "true"
+- `test_persists_false` - set_edl_enabled(False) -> StateStore stores "false"
 
 #### `TestGetExportFormatsFromEdlFlag`
-- `test_csv_only_when_disabled` - edl_enabled=False → ("csv",)
-- `test_csv_and_edl_when_enabled` - edl_enabled=True → ("csv", "edl")
+- `test_csv_only_when_disabled` - edl_enabled=False -> ("csv",)
+- `test_csv_and_edl_when_enabled` - edl_enabled=True -> ("csv", "edl")
 
 #### Updated Tests
 - `TestGetManualFetchFormats.test_returns_selected` - update to use `edl_enabled` param
@@ -270,10 +270,10 @@ def get_manual_fetch_formats(
 ## Edge Cases & Validation
 
 ### StateStore Value Types
-- `None` → default False
-- `"true"` → True
-- `"false"` → False
-- Other values → default False (defensive)
+- `None` -> default False
+- `"true"` -> True
+- `"false"` -> False
+- Other values -> default False (defensive)
 
 ### Migration from Current State
 - No migration needed - if user had EDL selected, they toggle it again
@@ -295,7 +295,7 @@ def get_manual_fetch_formats(
 
 The tray app always exports CSV markers. You can optionally enable EDL export:
 
-**Additional Output Format** → **EDL**
+**Additional Output Format** -> **EDL**
 - Checked: Export both CSV and EDL
 - Unchecked: Export CSV only (default)
 
@@ -327,13 +327,13 @@ Auto mode always uses the formats configured in `config.json` (`export_formats`)
 
 ## Compliance Checklist
 
-- ✅ No secrets logged
-- ✅ No new dependencies
-- ✅ No config.json schema changes
-- ✅ No StateStore signature changes (uses existing `get_state`/`set_state`)
-- ✅ core/ remains DI-friendly (controller is pure functions)
-- ✅ Tests use unittest + unittest.mock only
-- ✅ Minimal diffs (focused on menu + controller)
+- [DONE] No secrets logged
+- [DONE] No new dependencies
+- [DONE] No config.json schema changes
+- [DONE] No StateStore signature changes (uses existing `get_state`/`set_state`)
+- [DONE] core/ remains DI-friendly (controller is pure functions)
+- [DONE] Tests use unittest + unittest.mock only
+- [DONE] Minimal diffs (focused on menu + controller)
 
 ---
 

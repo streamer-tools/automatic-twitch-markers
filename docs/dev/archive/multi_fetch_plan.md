@@ -246,8 +246,8 @@ All tests use `unittest` + `unittest.mock`, no real network.
    - `test_api_error_raises` - HTTP 401/403/429/500 raise VideosFetchError
    
 2. **`TestParseRFC3339ToDate`**
-   - `test_with_z_suffix` - "2024-01-15T12:00:00Z" → date(2024, 1, 15)
-   - `test_with_timezone_offset` - "2024-01-15T12:00:00+00:00" → date(2024, 1, 15)
+   - `test_with_z_suffix` - "2024-01-15T12:00:00Z" -> date(2024, 1, 15)
+   - `test_with_timezone_offset` - "2024-01-15T12:00:00+00:00" -> date(2024, 1, 15)
    - `test_invalid_format_raises` - Malformed timestamp raises ValueError
 
 **Run Command:**
@@ -260,18 +260,18 @@ python -m unittest tests.test_videos_api -v
 **Tests:**
 1. **`TestValidateDateRange`**
    - `test_valid_range` - start <= end, both within 60 days
-   - `test_start_after_end_invalid` - start > end → invalid
-   - `test_end_in_future_invalid` - end > today → invalid
-   - `test_start_too_old_invalid` - start < today-60 → invalid
-   - `test_boundary_cases_valid` - start=today-60, end=today → valid
+   - `test_start_after_end_invalid` - start > end -> invalid
+   - `test_end_in_future_invalid` - end > today -> invalid
+   - `test_start_too_old_invalid` - start < today-60 -> invalid
+   - `test_boundary_cases_valid` - start=today-60, end=today -> valid
 
 2. **`TestRunMultiFetch`**
-   - `test_no_vods_found` - Empty video list → success=True, 0 VODs message
+   - `test_no_vods_found` - Empty video list -> success=True, 0 VODs message
    - `test_single_vod_with_markers` - Fetch + export 1 VOD successfully
    - `test_multiple_vods_all_succeed` - Fetch + export 3 VODs successfully
    - `test_one_vod_fails_continues` - VOD 2 fails markers fetch, continues to VOD 3
    - `test_vod_with_no_markers_skipped` - VOD has no markers, counts as skipped
-   - `test_token_refresh_error` - OAuth fails → returns error result
+   - `test_token_refresh_error` - OAuth fails -> returns error result
 
 **Run Command:**
 ```powershell
@@ -299,7 +299,7 @@ python -m unittest tests.test_date_range_dialog -v
 ### Manual Verification
 
 1. **Date Range Dialog:**
-   - Run tray app → "Fetch Multiple Stream Markers"
+   - Run tray app -> "Fetch Multiple Stream Markers"
    - Verify default dates (end=today, start=today-7)
    - Test validation errors (start > end, future dates, > 60 days back)
    - Verify Cancel aborts cleanly
@@ -311,8 +311,8 @@ python -m unittest tests.test_date_range_dialog -v
    - Check output folder for CSV/EDL files (one set per VOD)
 
 3. **Error Handling:**
-   - Select range with no VODs → friendly "no VODs found" message
-   - Simulate 1 VOD with markers, 1 without → verify summary shows counts
+   - Select range with no VODs -> friendly "no VODs found" message
+   - Simulate 1 VOD with markers, 1 without -> verify summary shows counts
 
 ### Full Test Suite
 
@@ -371,13 +371,13 @@ Expected: All existing tests + new tests pass (~320 total).
 
 ## Compliance Checklist
 
-✅ No secrets logged (tokens, client_secret, auth headers)
-✅ No new dependencies (tkinter is stdlib)
-✅ No config.json schema changes
-✅ No StateStore public method signature changes
-✅ core/ remains DI-friendly (videos_api.py follows pattern)
-✅ Tests use unittest + unittest.mock only
-✅ Minimal diffs, focused on new feature
+[DONE] No secrets logged (tokens, client_secret, auth headers)
+[DONE] No new dependencies (tkinter is stdlib)
+[DONE] No config.json schema changes
+[DONE] No StateStore public method signature changes
+[DONE] core/ remains DI-friendly (videos_api.py follows pattern)
+[DONE] Tests use unittest + unittest.mock only
+[DONE] Minimal diffs, focused on new feature
 
 ---
 

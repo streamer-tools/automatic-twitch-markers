@@ -12,7 +12,7 @@ Add end-user Twitch authentication to the Windows tray app using OAuth Device Co
 ---
 
 ### 2. UX: Duplicate Auth Prevention
-**Question:** Should "Authenticate with Twitch…" be disabled while auth is pending?
+**Question:** Should "Authenticate with Twitch..." be disabled while auth is pending?
 
 **Default:** Yes. Lock out duplicate auth attempts by:
 - Disabling menu item while dialog is open
@@ -21,18 +21,18 @@ Add end-user Twitch authentication to the Windows tray app using OAuth Device Co
 
 ---
 
-### 3. "Connected as …" Display Location
+### 3. "Connected as ..." Display Location
 **Question:** Where should the connected status appear?
 
 **Default:** A disabled menu item at the top of the tray menu:
 ```
-────────────────────────
-✓ Connected as lirik
-────────────────────────
+------------------------
+[OK] Connected as lirik
+------------------------
     OR
-────────────────────────
-⚠ Not authenticated
-────────────────────────
+------------------------
+[WARN] Not authenticated
+------------------------
 ```
 
 ---
@@ -55,7 +55,7 @@ Add end-user Twitch authentication to the Windows tray app using OAuth Device Co
 
 **Default:**
 - Flip to unauthenticated state (clear invalid tokens)
-- Show tray notification: "Session expired. Authenticate with Twitch…"
+- Show tray notification: "Session expired. Authenticate with Twitch..."
 - Update menu to show "Not authenticated" status
 - Do NOT auto-open auth dialog (let user initiate)
 
@@ -309,24 +309,24 @@ class DeviceAuthDialog:
 
 **UI Layout:**
 ```
-┌─────────────────────────────────────────┐
-│   Authenticate with Twitch              │
-├─────────────────────────────────────────┤
-│                                         │
-│   Enter this code on Twitch:            │
-│                                         │
-│         ┌───────────────────┐           │
-│         │    ABCD-EFGH      │  (large)  │
-│         └───────────────────┘           │
-│                                         │
-│   [  Open Twitch  ]  [  Copy Code  ]    │
-│                                         │
-│   Status: Waiting for authorization...  │
-│   Expires in: 4:32                      │
-│                                         │
-│              [  Cancel  ]               │
-│                                         │
-└─────────────────────────────────────────┘
++-----------------------------------------+
+|   Authenticate with Twitch              |
++-----------------------------------------+
+|                                         |
+|   Enter this code on Twitch:            |
+|                                         |
+|         +-------------------+           |
+|         |    ABCD-EFGH      |  (large)  |
+|         +-------------------+           |
+|                                         |
+|   [  Open Twitch  ]  [  Copy Code  ]    |
+|                                         |
+|   Status: Waiting for authorization...  |
+|   Expires in: 4:32                      |
+|                                         |
+|              [  Cancel  ]               |
+|                                         |
++-----------------------------------------+
 ```
 
 ---
@@ -349,13 +349,13 @@ def create_tray_menu(
     Build tray context menu.
     
     Menu structure:
-    - ✓ Connected as <display_name>  (disabled, status only)
+    - [OK] Connected as <display_name>  (disabled, status only)
       OR
-    - ⚠ Not authenticated  (disabled, status only)
-    - ─────────────────
-    - Authenticate with Twitch…  (enabled if not auth'd & not pending)
+    - [WARN] Not authenticated  (disabled, status only)
+    - -----------------
+    - Authenticate with Twitch...  (enabled if not auth'd & not pending)
     - Disconnect Twitch  (enabled if auth'd)
-    - ─────────────────
+    - -----------------
     - (existing items...)
     """
 
@@ -435,7 +435,7 @@ All tests use `unittest` + `unittest.mock`. No real network calls.
 | `test_request_device_code_success` | Mock successful device code response |
 | `test_request_device_code_network_error` | Mock network error, verify safe exception |
 | `test_request_device_code_api_error` | Mock 400/500 response, verify error handling |
-| `test_poll_authorization_pending_loops` | Mock pending → success, verify polling |
+| `test_poll_authorization_pending_loops` | Mock pending -> success, verify polling |
 | `test_poll_slow_down_increases_interval` | Mock slow_down, verify interval increase |
 | `test_poll_expired_token_raises` | Mock expired_token, verify DeviceCodeExpiredError |
 | `test_poll_access_denied_raises` | Mock access_denied, verify DeviceAuthDeniedError |
@@ -465,7 +465,7 @@ All tests use `unittest` + `unittest.mock`. No real network calls.
 ### Manual Verification
 
 1. Build and run tray app
-2. Click "Authenticate with Twitch…"
+2. Click "Authenticate with Twitch..."
 3. Verify dialog shows user_code
 4. Click "Open Twitch" - verify browser opens to verification URL
 5. Complete auth on Twitch

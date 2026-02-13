@@ -95,7 +95,7 @@ This is infrastructure-only. Existing tests validate functionality.
 1. **Local build**:
    - Run `scripts\build_exe.ps1`
    - Verify `dist\TwitchMarkerAgent.exe` created
-   - Double-click exe → tray icon appears
+   - Double-click exe -> tray icon appears
    - Test manual fetch (requires auth setup)
    - Test auto mode start/stop
    - Test Windows startup toggle

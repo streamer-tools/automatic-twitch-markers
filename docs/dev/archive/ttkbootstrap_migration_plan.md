@@ -15,7 +15,7 @@ Replace `tkcalendar.DateEntry` with `ttkbootstrap.DateEntry` in the multi-fetch 
 ### Q1: Dependency Approval
 **Question:** Add `ttkbootstrap` as a new dependency?
 
-**Recommendation:** ✅ Yes, add `ttkbootstrap>=1.5.0,<2.0`
+**Recommendation:** [DONE] Yes, add `ttkbootstrap>=1.5.0,<2.0`
 
 **Benefits:**
 - Modern ttk themes (flatly, darkly, cosmo, etc.)
@@ -37,7 +37,7 @@ Replace `tkcalendar.DateEntry` with `ttkbootstrap.DateEntry` in the multi-fetch 
 ### Q2: Theming Scope
 **Question:** Apply ttkbootstrap theme globally or dialog-only?
 
-**Decision:** ✅ Dialog-only to keep diffs minimal
+**Decision:** [DONE] Dialog-only to keep diffs minimal
 
 Apply theme only within DateRangeDialog using:
 ```python
@@ -55,7 +55,7 @@ This avoids affecting Device Auth Dialog or other UI components.
 ### Q3: Range Enforcement UX
 **Question:** Since ttkbootstrap DateEntry lacks mindate/maxdate, how to handle out-of-range selections?
 
-**Decision:** ✅ Reject + revert with clear error message
+**Decision:** [DONE] Reject + revert with clear error message
 
 Approach:
 - Allow user to select any date in calendar popup
@@ -70,7 +70,7 @@ Alternative (clamp automatically) rejected because it's confusing UX.
 ### Q4: Keep Preset Buttons?
 **Question:** Retain "Last 7 / 14 / 30 / 60 days" preset buttons?
 
-**Decision:** ✅ Yes, keep presets with same behavior (end=today)
+**Decision:** [DONE] Yes, keep presets with same behavior (end=today)
 
 ---
 
