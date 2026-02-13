@@ -797,6 +797,8 @@ def get_auth_status(
     http_client: "requests.Session",
     logger: logging.Logger,
     cached_display_name: str | None = None,
+    oauth: "TwitchOAuth | None" = None,
+    min_ttl_seconds: int = 60,
 ) -> AuthStatus:
     """
     Get current authentication status for menu display.
@@ -809,11 +811,17 @@ def get_auth_status(
         http_client: HTTP session.
         logger: Logger instance.
         cached_display_name: Optional cached display name to avoid network call.
+        oauth: Optional OAuth manager for silent refresh on expired access token.
+        min_ttl_seconds: Minimum token TTL used for silent refresh requests.
 
     Returns:
         AuthStatus with is_authenticated and display_name.
     """
-    from twitch_marker_agent.core.twitch_oauth import TwitchOAuth, TWITCH_VALIDATE_URL
+    from twitch_marker_agent.core.twitch_oauth import (
+        TWITCH_VALIDATE_URL,
+        TokenRefreshError,
+        TwitchOAuth,
+    )
 
     # Check if we have a stored access token
     access_token = state_store.get_token(TwitchOAuth.TOKEN_KEY_ACCESS)
@@ -843,10 +851,46 @@ def get_auth_status(
                 display_name=data.get("login"),
                 user_id=data.get("user_id"),
             )
-        else:
-            # Token invalid
-            logger.debug("Token validation failed: HTTP %d", response.status_code)
-            return AuthStatus(is_authenticated=False)
+
+        if response.status_code == 401 and oauth is not None:
+            try:
+                refreshed_token = oauth.get_valid_user_access_token(
+                    min_ttl_seconds=min_ttl_seconds
+                )
+            except TokenRefreshError:
+                logger.debug("Token refresh failed during auth status check")
+                return AuthStatus(is_authenticated=False)
+
+            try:
+                refreshed_response = http_client.get(
+                    TWITCH_VALIDATE_URL,
+                    headers={"Authorization": f"OAuth {refreshed_token}"},
+                    timeout=(5, 10),
+                )
+
+                if refreshed_response.status_code == 200:
+                    data = refreshed_response.json()
+                    return AuthStatus(
+                        is_authenticated=True,
+                        display_name=data.get("login"),
+                        user_id=data.get("user_id"),
+                    )
+
+                logger.debug(
+                    "Token validation after refresh failed: HTTP %d",
+                    refreshed_response.status_code,
+                )
+                return AuthStatus(is_authenticated=False)
+            except Exception as e:
+                logger.debug(
+                    "Token validation after refresh error: %s",
+                    type(e).__name__,
+                )
+                return AuthStatus(is_authenticated=True, display_name="(unknown)")
+
+        # Token invalid
+        logger.debug("Token validation failed: HTTP %d", response.status_code)
+        return AuthStatus(is_authenticated=False)
 
     except Exception as e:
         # Network error - assume still authenticated if we have a token

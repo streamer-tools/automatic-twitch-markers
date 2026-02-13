@@ -222,6 +222,37 @@ class TestHandleStreamOffline(unittest.TestCase):
         self.assertEqual(result.marker_count, 2)
         self.assertEqual(len(result.export_paths), 1)
         self.assertFalse(result.skipped)
+        marker_call_kwargs = mock_markers.call_args.kwargs
+        self.assertEqual(marker_call_kwargs["user_id"], self.broadcaster_id)
+        self.assertEqual(marker_call_kwargs["video_id"], "vid_123")
+
+    @patch("twitch_marker_agent.core.offline_handler.get_latest_video_id")
+    @patch("twitch_marker_agent.core.offline_handler.get_stream_markers")
+    @patch("twitch_marker_agent.core.offline_handler.export_markers_csv")
+    def test_passes_broadcaster_user_id_for_marker_attribution(
+        self,
+        mock_export: MagicMock,
+        mock_markers: MagicMock,
+        mock_video: MagicMock,
+    ) -> None:
+        """Auto mode should pass broadcaster user_id for marker attribution inference."""
+        mock_video.return_value = "vid_123"
+        mock_markers.return_value = [MarkerVideo("vid_123", make_markers())]
+        mock_export.return_value = Path("/tmp/markers.csv")
+
+        handle_stream_offline(
+            http_client=self.http_client,
+            config=self.config,
+            access_token=self.access_token,
+            broadcaster_id=self.broadcaster_id,
+            state_store=self.state_store,
+            logger=self.logger,
+            max_attempts=1,
+        )
+
+        marker_call_kwargs = mock_markers.call_args.kwargs
+        self.assertEqual(marker_call_kwargs["user_id"], self.broadcaster_id)
+        self.assertEqual(marker_call_kwargs["video_id"], "vid_123")
 
     @patch("twitch_marker_agent.core.offline_handler.get_latest_video_id")
     @patch("twitch_marker_agent.core.offline_handler.get_stream_markers")

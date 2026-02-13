@@ -381,9 +381,21 @@ def run_tray_app(
 
     # Default scopes for DCF auth
     DEFAULT_SCOPES = ["channel:manage:broadcast"]
+    icon: pystray.Icon | None = None
 
     # Create AgentRunner (lazy, but we hold reference for start/stop)
-    from twitch_marker_agent.core.agent_runner import AgentRunner
+    from twitch_marker_agent.core.agent_runner import AgentRunner, AutoModeEvent
+
+    def on_auto_mode_event(event: AutoModeEvent) -> None:
+        """Handle Auto Mode success/error events with tray notifications."""
+        title = "Twitch Markers" if event.kind == "success" else "Auto Mode"
+        if icon:
+            try:
+                icon.notify(event.message, title)
+                return
+            except Exception:
+                pass
+        logger.info("Auto Mode event: %s", event.message)
 
     agent = AgentRunner(
         config=config,
@@ -391,9 +403,8 @@ def run_tray_app(
         http_client=http_client,
         oauth=oauth,
         logger=logger,
+        on_auto_mode_event=on_auto_mode_event,
     )
-
-    icon: pystray.Icon | None = None
 
     def refresh_auth_status() -> None:
         """Refresh cached auth status from state store."""
@@ -402,6 +413,7 @@ def run_tray_app(
             state_store=state_store,
             http_client=http_client,
             logger=logger,
+            oauth=oauth,
         )
 
     def update_menu() -> None:

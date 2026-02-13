@@ -100,6 +100,7 @@ The tray app provides:
 - **Authenticate with Twitch** - device flow auto-detects your broadcaster identity and stores it after success
 
 > **Note:** Fetch and Auto Mode actions are disabled until you authenticate with Twitch. Other settings (output folder, EDL toggle, startup) remain accessible.
+> Access tokens are short-lived (~4 hours), but the tray app refreshes them automatically; you should only need to re-authenticate if refresh tokens are revoked/expired.
 
 **Building executable**: See [docs/packaging.md](docs/packaging.md) for instructions on creating a standalone Windows exe.
 Local builds require seeded `client_id` (`TWITCH_MARKER_AGENT_CLIENT_ID` or `local.config.json` fallback) and intentionally fail if placeholder remains, unless an explicit dev-only override is used.
@@ -252,7 +253,12 @@ The tray includes a folder picker to set the export destination:
 
 ## Changelog
 
-### v0.9.0 (Unreleased)
+### v1.0.0 (2026-02-13)
+- **Fixed Auto Mode marker attribution regression** by passing broadcaster `user_id` during video-specific marker fetches (prevents broadcaster markers from being mislabeled as `Editor`)
+- **Stabilized tray auth session continuity** by making auth-status checks refresh-aware and skipping placeholder `client_secret` in refresh payloads for public/device-flow builds
+- **Added tray notifications for Auto Mode** - users will now receive notifications when Auto Mode exports markers, including success and failure cases (skip cases stay silent)
+
+### v0.9.0 (2026-02-13)
 - **Portable Runtime + Auth Polish:**
   - Runtime paths are now deterministic and portable-only: `config.json`, logs, and relative state paths resolve from the exe directory (frozen) or `Path.cwd()` (dev)
   - First-launch bootstrap now auto-creates `config.json` when missing (no startup failure on fresh portable folders)

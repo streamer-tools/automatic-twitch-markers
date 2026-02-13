@@ -226,6 +226,7 @@ def handle_stream_offline(
             http_client=http_client,
             config=config,
             access_token=access_token,
+            user_id=broadcaster_id,
             video_id=video_id,
             logger=logger,
         )

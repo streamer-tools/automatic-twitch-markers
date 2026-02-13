@@ -12,6 +12,7 @@ Auto mode automatically exports markers when your stream ends. When enabled, the
 - Exports to configured formats automatically
 
 To start auto mode, right-click the tray icon and select **"Start Auto Mode"**. To stop, select **"Stop Auto Mode"**.
+Auto Mode shows tray notifications for export successes and processing/auth failures; skipped outcomes (already processed/no markers) are silent.
 
 ### Manual Fetch
 The **"Fetch Latest Stream Markers"** action allows you to manually export markers from your latest VOD on demand. This is useful for:
@@ -52,6 +53,11 @@ Enable **"Start on Windows Login"** to automatically launch the tray app when yo
 - After successful auth, the app fetches the authenticated user via Helix `/users`.
 - Broadcaster identity is persisted in `StateStore`; `config.json` is updated when `broadcaster_id` is blank/placeholder.
 - The auth dialog auto-closes on success and a tray notification shows `Authenticated as <display_name>`.
+
+### Token Lifecycle
+- Twitch access tokens expire frequently (typically around 4 hours).
+- The tray app silently refreshes expired access tokens using the stored refresh token.
+- Re-authentication is only required when the refresh token is invalid, revoked, or expired due to inactivity.
 
 ## Default Behavior
 
