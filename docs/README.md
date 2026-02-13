@@ -1,15 +1,11 @@
 # Documentation Index
 
-This folder contains both user-facing docs and developer planning/history docs.
+Documentation is split by audience.
 
 ## User Documentation
-- [Tray App Guide](tray_app.md)
-- [Auto Mode Guide](auto_mode.md)
-- [Export Formats](export_formats.md)
-- [Configuration Reference](configuration.md)
-- [Project Structure and Architecture](project_structure.md)
-- [Windows Startup](windows_startup.md)
-- [Packaging Guide](packaging.md)
+Start here for setup, usage, and export behavior:
+- [User Documentation Index](user/README.md)
 
 ## Developer Documentation
-- [Developer Docs Index](dev/README.md)
+Architecture, implementation context, and historical plans:
+- [Developer Documentation Index](dev/README.md)

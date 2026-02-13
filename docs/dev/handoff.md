@@ -76,7 +76,7 @@ python -m twitch_marker_agent.cli auth-login
 - **`src/twitch_marker_agent/platform/windows_startup.py`**:
   - Windows-specific registry integration (HKCU Run key).
 
-**Deep Dive**: [Auto Mode](../auto_mode.md) | [Tray App](../tray_app.md) | [Windows Startup](../windows_startup.md)
+**Deep Dive**: [Auto Mode](../user/auto_mode.md) | [Tray App](../user/tray_app.md) | [Windows Startup](../user/windows_startup.md)
 
 ## 6. Operational Playbook
 - **Gating**:
@@ -113,4 +113,19 @@ python -m twitch_marker_agent.cli auth-login
 6. **Wait** for "Proceed RUN 2".
 7. **Implement**, verifying with tests.
 8. **Update Docs** (README/AGENTS) as part of the run.
+
+## 9. OLD_README Retention Matrix
+| OLD README Section | Current Home |
+|---|---|
+| Overview | `README.md` |
+| Why This Tool | `README.md` |
+| Goals | `README.md` |
+| Setup / Running | `README.md`, `CONTRIBUTING.md`, `docs/user/tray_app.md` |
+| Configuration (+ key table) | `docs/user/configuration.md` |
+| Project Structure | `docs/dev/project_structure.md` |
+| Infrastructure | `docs/dev/infrastructure.md` |
+| Export Formats | `docs/user/export_formats.md` |
+| Tray App Behaviors | `docs/user/tray_app.md`, `docs/user/auto_mode.md` |
+| Changelog | `CHANGELOG.md` |
+| License | `LICENSE`, `README.md` |
 

@@ -2,6 +2,33 @@
 
 A Windows-focused tray app that automatically exports Twitch stream markers after your stream ends.
 
+Made with ❤️ by [Poisonslash](https://twitch.tv/Poisonslash) / [CodeWezus](https://github.com/CodeWezus)
+
+## Why This Tool
+
+As of now there is no way to automatically retrieve stream markers from Twitch after the broadcast ends.
+
+Even Streamer.bot cannot directly fetch stream markers because Twitch's `Get Stream Markers` endpoint requires a broadcaster OAuth user token with `channel:manage:broadcast` scope.
+
+Automatic Twitch Markers solves that by:
+1. Running a one-time Twitch authentication flow.
+2. Maintaining token validity automatically.
+3. Listening for `stream.offline` events.
+4. Exporting markers to editor-friendly files after each stream.
+
+## Goals
+
+**Local MVP (v1):**
+- Windows tray app that runs quietly in the background.
+- Automatic CSV/EDL marker export after each stream.
+- SQLite-backed state to prevent duplicate exports.
+- Clear logging and predictable recovery behavior.
+
+**Product Direction:**
+- Keep the core modules framework-agnostic so the same logic can power future integrations.
+
+Final outcome: a reliable, low-maintenance marker export workflow that users can set once and trust.
+
 ## Quick Start (Portable Release)
 1. Download the latest Windows zip from [GitHub Releases](https://github.com/streamer-tools/automatic-twitch-markers/releases).
 2. Extract the zip to a folder you control.
@@ -9,7 +36,7 @@ A Windows-focused tray app that automatically exports Twitch stream markers afte
 4. Click **Authenticate with Twitch** in the tray menu.
 5. Use **Fetch Latest Stream Markers** or start **Auto Mode**.
 
-`config.json` is auto-created on first launch if missing. Official releases should already include a seeded `client_id` so end users do not need to edit auth fields.
+`config.json` is auto-created on first launch if missing. Official releases should include a seeded `client_id`, so end users should not need to edit auth fields.
 
 ## Features
 - Auto Mode: listens for `stream.offline` and exports markers automatically.
@@ -18,50 +45,10 @@ A Windows-focused tray app that automatically exports Twitch stream markers afte
 - Export formats: Twitch-style CSV (always) and optional Resolve-compatible EDL.
 - Windows startup toggle from tray menu.
 
-## Infrastructure Diagram
-```text
-+------------------------------+
-| Entry Points                 |
-| app.py (tray) | cli.py       |
-+--------------+---------------+
-               |
-               v
-+------------------------------+
-| tray_controller.py           |
-| UI-triggered orchestration   |
-+--------------+---------------+
-               |
-               v
-+------------------------------+
-| core/agent_runner.py         |
-| Async Auto Mode orchestrator |
-+--------------+---------------+
-               |
-               v
-+------------------------------+
-| Core Modules                 |
-| config.py                    |
-| state_store.py               |
-| twitch_oauth.py              |
-| device_auth.py               |
-| eventsub_ws.py               |
-| eventsub_subscriptions.py    |
-| offline_handler.py           |
-| markers_api.py               |
-| videos_api.py                |
-| export_csv.py / export_edl.py|
-+------------------------------+
-```
-
 ## Documentation
 - [Documentation Index](docs/README.md)
-- [Tray App Guide](docs/tray_app.md)
-- [Auto Mode Guide](docs/auto_mode.md)
-- [Export Formats](docs/export_formats.md)
-- [Configuration Reference](docs/configuration.md)
-- [Project Structure and Architecture](docs/project_structure.md)
-- [Windows Startup](docs/windows_startup.md)
-- [Packaging Guide](docs/packaging.md)
+- [User Documentation](docs/user/README.md)
+- [Developer Documentation](docs/dev/README.md)
 
 ## Configuration
 Runtime paths are portable-oriented:
@@ -76,10 +63,7 @@ If `client_id` is still a placeholder, auth is blocked. This indicates an unseed
 Required OAuth scope:
 - `channel:manage:broadcast`
 
-Full configuration key reference: [docs/configuration.md](docs/configuration.md).
-
-## Project Structure
-See the full current repository tree and architecture notes in [docs/project_structure.md](docs/project_structure.md).
+Full configuration reference: [docs/user/configuration.md](docs/user/configuration.md).
 
 ## Developers (From Source)
 1. Clone:
