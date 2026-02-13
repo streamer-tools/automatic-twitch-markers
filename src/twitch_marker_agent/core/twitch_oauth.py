@@ -42,6 +42,22 @@ DEFAULT_SCOPES = ["channel:manage:broadcast"]
 
 # HTTP timeouts (connect, read) in seconds
 HTTP_TIMEOUT = (10, 30)
+_PLACEHOLDER_CLIENT_SECRETS = {
+    "your_twitch_client_secret",
+    "your_client_secret",
+    "your_client_secret_here",
+    "your_client_secret_here...",
+}
+
+
+def _has_real_client_secret(client_secret: str | None) -> bool:
+    """Return True when a client_secret is non-empty and not a placeholder."""
+    normalized = str(client_secret or "").strip().lower()
+    if not normalized:
+        return False
+    if normalized in _PLACEHOLDER_CLIENT_SECRETS:
+        return False
+    return not normalized.startswith("your_twitch_client_secret")
 
 
 # =============================================================================
@@ -601,9 +617,9 @@ class TwitchOAuth:
             "client_id": self._config.client_id,
         }
 
-        # Only include client_secret for non-DCF (authorization_code) flow
-        if not is_dcf and self._config.client_secret:
-            data["client_secret"] = self._config.client_secret
+        # Include client_secret only for non-DCF flows with a real configured secret.
+        if not is_dcf and _has_real_client_secret(self._config.client_secret):
+            data["client_secret"] = self._config.client_secret.strip()
 
         try:
             response = self._http_session.post(

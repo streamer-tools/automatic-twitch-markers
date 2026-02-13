@@ -15,6 +15,7 @@ import asyncio
 import logging
 import unittest
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -329,6 +330,256 @@ class TestAgentRunnerNotificationDispatch(unittest.TestCase):
 
         # Offline handler should NOT be called
         offline_fn.assert_not_called()
+
+    def test_emits_success_event_for_exported_markers(self) -> None:
+        """Should emit success event when offline handler exports markers."""
+        from twitch_marker_agent.core.agent_runner import AgentRunner
+        from twitch_marker_agent.core.offline_handler import MarkerExportResult
+
+        config = make_mock_config()
+        state_store = MagicMock()
+        http_client = MagicMock()
+        oauth = MagicMock()
+        oauth.get_valid_user_access_token.return_value = "test_token"
+        logger = MagicMock(spec=logging.Logger)
+        event_callback = MagicMock()
+
+        notification_queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        eventsub_client = MagicMock()
+        eventsub_client.connect = AsyncMock(return_value="session_123")
+
+        async def slow_run() -> None:
+            await asyncio.sleep(10)
+
+        eventsub_client.run_until_stopped = AsyncMock(side_effect=slow_run)
+        eventsub_client.stop = AsyncMock()
+        eventsub_client.close = AsyncMock()
+
+        ensure_fn = MagicMock()
+        offline_fn = MagicMock(
+            return_value=MarkerExportResult(
+                video_id="vid_123",
+                marker_count=3,
+                export_paths=[
+                    Path("/tmp/markers.csv"),
+                    Path("/tmp/markers.edl"),
+                ],
+                skipped=False,
+            )
+        )
+
+        runner = AgentRunner(
+            config=config,
+            state_store=state_store,
+            http_client=http_client,
+            oauth=oauth,
+            logger=logger,
+            eventsub_client=eventsub_client,
+            ensure_subscription_fn=ensure_fn,
+            handle_offline_fn=offline_fn,
+            on_auto_mode_event=event_callback,
+        )
+        runner._notification_queue = notification_queue
+
+        async def run_test() -> None:
+            task = asyncio.create_task(runner.run_async())
+            await asyncio.sleep(0.1)
+            await notification_queue.put(make_mock_message())
+            await asyncio.sleep(0.2)
+            runner.request_stop()
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(run_test())
+
+        event_callback.assert_called_once()
+        event = event_callback.call_args.args[0]
+        self.assertEqual(event.kind, "success")
+        self.assertEqual(event.marker_count, 3)
+        self.assertEqual(event.video_id, "vid_123")
+        self.assertEqual(event.message, "Exported 3 markers (CSV, EDL)")
+
+    def test_skipped_offline_result_emits_no_event(self) -> None:
+        """Should not emit event for skipped offline handler results."""
+        from twitch_marker_agent.core.agent_runner import AgentRunner
+        from twitch_marker_agent.core.offline_handler import MarkerExportResult
+
+        config = make_mock_config()
+        oauth = MagicMock()
+        oauth.get_valid_user_access_token.return_value = "test_token"
+        logger = MagicMock(spec=logging.Logger)
+        event_callback = MagicMock()
+
+        notification_queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        eventsub_client = MagicMock()
+        eventsub_client.connect = AsyncMock(return_value="session_123")
+
+        async def slow_run() -> None:
+            await asyncio.sleep(10)
+
+        eventsub_client.run_until_stopped = AsyncMock(side_effect=slow_run)
+        eventsub_client.stop = AsyncMock()
+        eventsub_client.close = AsyncMock()
+
+        ensure_fn = MagicMock()
+        offline_fn = MagicMock(
+            return_value=MarkerExportResult(
+                video_id="vid_123",
+                marker_count=0,
+                export_paths=[],
+                skipped=True,
+                skip_reason="No markers in video",
+            )
+        )
+
+        runner = AgentRunner(
+            config=config,
+            state_store=MagicMock(),
+            http_client=MagicMock(),
+            oauth=oauth,
+            logger=logger,
+            eventsub_client=eventsub_client,
+            ensure_subscription_fn=ensure_fn,
+            handle_offline_fn=offline_fn,
+            on_auto_mode_event=event_callback,
+        )
+        runner._notification_queue = notification_queue
+
+        async def run_test() -> None:
+            task = asyncio.create_task(runner.run_async())
+            await asyncio.sleep(0.1)
+            await notification_queue.put(make_mock_message())
+            await asyncio.sleep(0.2)
+            runner.request_stop()
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(run_test())
+
+        event_callback.assert_not_called()
+
+    def test_emits_error_event_on_markers_auth_error(self) -> None:
+        """Should emit error event when offline handling raises MarkersAuthError."""
+        from twitch_marker_agent.core.agent_runner import AgentRunner
+        from twitch_marker_agent.core.markers_api import MarkersAuthError
+
+        config = make_mock_config()
+        oauth = MagicMock()
+        oauth.get_valid_user_access_token.return_value = "test_token"
+        logger = MagicMock(spec=logging.Logger)
+        event_callback = MagicMock()
+
+        notification_queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        eventsub_client = MagicMock()
+        eventsub_client.connect = AsyncMock(return_value="session_123")
+
+        async def slow_run() -> None:
+            await asyncio.sleep(10)
+
+        eventsub_client.run_until_stopped = AsyncMock(side_effect=slow_run)
+        eventsub_client.stop = AsyncMock()
+        eventsub_client.close = AsyncMock()
+
+        ensure_fn = MagicMock()
+        offline_fn = MagicMock(side_effect=MarkersAuthError("unauthorized"))
+
+        runner = AgentRunner(
+            config=config,
+            state_store=MagicMock(),
+            http_client=MagicMock(),
+            oauth=oauth,
+            logger=logger,
+            eventsub_client=eventsub_client,
+            ensure_subscription_fn=ensure_fn,
+            handle_offline_fn=offline_fn,
+            on_auto_mode_event=event_callback,
+        )
+        runner._notification_queue = notification_queue
+
+        async def run_test() -> None:
+            task = asyncio.create_task(runner.run_async())
+            await asyncio.sleep(0.1)
+            await notification_queue.put(make_mock_message())
+            await asyncio.sleep(0.2)
+            runner.request_stop()
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(run_test())
+
+        event_callback.assert_called_once()
+        event = event_callback.call_args.args[0]
+        self.assertEqual(event.kind, "error")
+        self.assertEqual(event.message, "Re-auth required for Auto Mode.")
+
+    def test_emits_error_event_on_unexpected_exception(self) -> None:
+        """Should emit safe error event when offline handling raises unexpected error."""
+        from twitch_marker_agent.core.agent_runner import AgentRunner
+
+        config = make_mock_config()
+        oauth = MagicMock()
+        oauth.get_valid_user_access_token.return_value = "test_token"
+        logger = MagicMock(spec=logging.Logger)
+        event_callback = MagicMock()
+
+        notification_queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        eventsub_client = MagicMock()
+        eventsub_client.connect = AsyncMock(return_value="session_123")
+
+        async def slow_run() -> None:
+            await asyncio.sleep(10)
+
+        eventsub_client.run_until_stopped = AsyncMock(side_effect=slow_run)
+        eventsub_client.stop = AsyncMock()
+        eventsub_client.close = AsyncMock()
+
+        ensure_fn = MagicMock()
+        offline_fn = MagicMock(side_effect=RuntimeError("boom"))
+
+        runner = AgentRunner(
+            config=config,
+            state_store=MagicMock(),
+            http_client=MagicMock(),
+            oauth=oauth,
+            logger=logger,
+            eventsub_client=eventsub_client,
+            ensure_subscription_fn=ensure_fn,
+            handle_offline_fn=offline_fn,
+            on_auto_mode_event=event_callback,
+        )
+        runner._notification_queue = notification_queue
+
+        async def run_test() -> None:
+            task = asyncio.create_task(runner.run_async())
+            await asyncio.sleep(0.1)
+            await notification_queue.put(make_mock_message())
+            await asyncio.sleep(0.2)
+            runner.request_stop()
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(run_test())
+
+        event_callback.assert_called_once()
+        event = event_callback.call_args.args[0]
+        self.assertEqual(event.kind, "error")
+        self.assertEqual(event.message, "Auto Mode failed: RuntimeError")
 
 
 class TestAgentRunnerStop(unittest.TestCase):

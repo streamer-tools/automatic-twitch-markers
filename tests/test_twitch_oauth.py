@@ -742,6 +742,32 @@ class TestRefreshAccessToken(unittest.TestCase):
 
         self.assertEqual(sent_data["client_secret"], "test_client_secret")
 
+    def test_refresh_non_dcf_omits_placeholder_client_secret(self) -> None:
+        """Placeholder client_secret should not be sent in refresh payload."""
+        self.mock_config.client_secret = "YOUR_TWITCH_CLIENT_SECRET"
+        self.state_store.store_token(TwitchOAuth.TOKEN_KEY_REFRESH, "regular_refresh")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_access",
+            "expires_in": 3600,
+        }
+        self.mock_session.post.return_value = mock_response
+
+        oauth = TwitchOAuth(
+            config=self.mock_config,
+            state_store=self.state_store,
+            logger=self.mock_logger,
+            http_session=self.mock_session,
+        )
+
+        oauth.refresh_access_token()
+
+        call_args = self.mock_session.post.call_args
+        sent_data = call_args.kwargs.get("data", {})
+        self.assertNotIn("client_secret", sent_data)
+
     def test_refresh_401_clears_all_tokens(self) -> None:
         """Refresh 401 should clear all stored tokens."""
         from twitch_marker_agent.core.twitch_oauth import TokenRefreshError

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, Awaitable
 
@@ -43,6 +43,16 @@ class AgentStatus:
     connected_at: datetime | None = None
 
 
+@dataclass
+class AutoModeEvent:
+    """Auto Mode event emitted for tray notifications."""
+
+    kind: str  # "success" | "error"
+    message: str
+    marker_count: int = 0
+    video_id: str | None = None
+
+
 # =============================================================================
 # Agent Runner
 # =============================================================================
@@ -68,6 +78,7 @@ class AgentRunner:
         eventsub_client: "EventSubWebSocketClient | None" = None,
         ensure_subscription_fn: Callable[..., Any] | None = None,
         handle_offline_fn: Callable[..., Any] | None = None,
+        on_auto_mode_event: Callable[[AutoModeEvent], None] | None = None,
     ) -> None:
         """
         Initialize the agent runner.
@@ -81,6 +92,7 @@ class AgentRunner:
             eventsub_client: Optional injected EventSub client (for testing).
             ensure_subscription_fn: Optional injected subscription function.
             handle_offline_fn: Optional injected offline handler function.
+            on_auto_mode_event: Optional callback for Auto Mode success/error events.
         """
         self._config = config
         self._state_store = state_store
@@ -92,6 +104,7 @@ class AgentRunner:
         self._eventsub_client = eventsub_client
         self._ensure_subscription_fn = ensure_subscription_fn
         self._handle_offline_fn = handle_offline_fn
+        self._on_auto_mode_event = on_auto_mode_event
 
         # State
         self._is_running = False
@@ -171,6 +184,18 @@ class AgentRunner:
         from twitch_marker_agent.core.offline_handler import handle_stream_offline
 
         return handle_stream_offline
+
+    def _emit_auto_mode_event(self, event: AutoModeEvent) -> None:
+        """Emit a best-effort Auto Mode event callback."""
+        if self._on_auto_mode_event is None:
+            return
+        try:
+            self._on_auto_mode_event(event)
+        except Exception as e:
+            self._logger.debug(
+                "Auto Mode event callback failed: %s",
+                type(e).__name__,
+            )
 
     def _reset_state(self) -> None:
         """
@@ -460,13 +485,19 @@ class AgentRunner:
         except TokenRefreshError:
             self._last_error = "Token refresh failed during notification"
             self._logger.warning("Token refresh failed, cannot process offline event")
+            self._emit_auto_mode_event(
+                AutoModeEvent(
+                    kind="error",
+                    message="Re-auth required for Auto Mode.",
+                )
+            )
             return
 
         # Dispatch to offline handler (run in executor to not block async)
         try:
             # Run sync handler in thread pool
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 None,
                 lambda: handle_offline(
                     http_client=self._http_client,
@@ -479,12 +510,50 @@ class AgentRunner:
                 ),
             )
             self._logger.info("stream.offline handled successfully")
+            if getattr(result, "skipped", False):
+                return
+
+            marker_count = int(getattr(result, "marker_count", 0))
+            video_id = getattr(result, "video_id", None)
+            export_paths = getattr(result, "export_paths", []) or []
+
+            formats: list[str] = []
+            for path in export_paths:
+                suffix = getattr(path, "suffix", "")
+                fmt = str(suffix).lstrip(".").upper()
+                if fmt and fmt not in formats:
+                    formats.append(fmt)
+
+            message = f"Exported {marker_count} markers"
+            if formats:
+                message = f"{message} ({', '.join(formats)})"
+
+            self._emit_auto_mode_event(
+                AutoModeEvent(
+                    kind="success",
+                    message=message,
+                    marker_count=marker_count,
+                    video_id=video_id,
+                )
+            )
         except MarkersAuthError:
             self._last_error = "Markers auth failed. Run auth-login."
             self._logger.warning("Markers auth error during offline handling")
+            self._emit_auto_mode_event(
+                AutoModeEvent(
+                    kind="error",
+                    message="Re-auth required for Auto Mode.",
+                )
+            )
         except Exception as e:
             self._logger.error(
                 "Error handling stream.offline: %s", type(e).__name__
+            )
+            self._emit_auto_mode_event(
+                AutoModeEvent(
+                    kind="error",
+                    message=f"Auto Mode failed: {type(e).__name__}",
+                )
             )
 
     def request_stop(self) -> None:

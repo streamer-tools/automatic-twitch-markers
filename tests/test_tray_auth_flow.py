@@ -103,6 +103,61 @@ class TestGetAuthStatus(unittest.TestCase):
 
         self.assertFalse(result.is_authenticated)
 
+    def test_get_auth_status_401_refresh_success(self):
+        """Test 401 token validation can recover with silent refresh."""
+        self.mock_state_store.get_token.return_value = "expired_token"
+        mock_oauth = MagicMock()
+        mock_oauth.get_valid_user_access_token.return_value = "refreshed_token"
+
+        expired_response = Mock()
+        expired_response.status_code = 401
+
+        refreshed_response = Mock()
+        refreshed_response.status_code = 200
+        refreshed_response.json.return_value = {
+            "login": "streamer_name",
+            "user_id": "12345",
+        }
+
+        self.mock_http.get.side_effect = [expired_response, refreshed_response]
+
+        result = get_auth_status(
+            self.mock_state_store,
+            self.mock_http,
+            self.logger,
+            oauth=mock_oauth,
+        )
+
+        self.assertTrue(result.is_authenticated)
+        self.assertEqual(result.display_name, "streamer_name")
+        self.assertEqual(result.user_id, "12345")
+        mock_oauth.get_valid_user_access_token.assert_called_once_with(
+            min_ttl_seconds=60
+        )
+
+    def test_get_auth_status_401_refresh_failure(self):
+        """Test 401 token validation returns unauthenticated when refresh fails."""
+        from twitch_marker_agent.core.twitch_oauth import TokenRefreshError
+
+        self.mock_state_store.get_token.return_value = "expired_token"
+        mock_oauth = MagicMock()
+        mock_oauth.get_valid_user_access_token.side_effect = TokenRefreshError(
+            "Session expired"
+        )
+
+        expired_response = Mock()
+        expired_response.status_code = 401
+        self.mock_http.get.return_value = expired_response
+
+        result = get_auth_status(
+            self.mock_state_store,
+            self.mock_http,
+            self.logger,
+            oauth=mock_oauth,
+        )
+
+        self.assertFalse(result.is_authenticated)
+
     def test_get_auth_status_network_error(self):
         """Test assumes authenticated on network error if token exists."""
         self.mock_state_store.get_token.return_value = "some_token"
