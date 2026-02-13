@@ -8,6 +8,7 @@ without the system tray. Useful for debugging and server deployments.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import NoReturn
@@ -76,7 +77,11 @@ def cmd_auth_login(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success, non-zero for error).
     """
-    from twitch_marker_agent.core.config import load_config
+    from twitch_marker_agent.core.config import (
+        ensure_config_exists,
+        is_placeholder_client_id,
+        load_config,
+    )
     from twitch_marker_agent.core.logging_setup import setup_logging
     from twitch_marker_agent.core.runtime_paths import build_runtime_paths
     from twitch_marker_agent.core.state_store import StateStore
@@ -88,9 +93,11 @@ def cmd_auth_login(args: argparse.Namespace) -> int:
     )
 
     runtime_paths = build_runtime_paths()
+    client_id_seed = os.getenv("TWITCH_MARKER_AGENT_CLIENT_ID")
 
     # Load configuration
     try:
+        ensure_config_exists(args.config, client_id_seed=client_id_seed)
         config = load_config(
             args.config,
             base_dir=runtime_paths.base_dir,
@@ -100,6 +107,16 @@ def cmd_auth_login(args: argparse.Namespace) -> int:
         return 1
     except Exception as e:
         print(f"Error loading configuration: {e}", file=sys.stderr)
+        return 1
+
+    if is_placeholder_client_id(config.client_id):
+        print(
+            "Error: This build is missing the Twitch Client ID required for authentication. "
+            "If you downloaded this build, use the official release. "
+            "If you built it yourself, set TWITCH_MARKER_AGENT_CLIENT_ID and rebuild. "
+            f"Config: {args.config}",
+            file=sys.stderr,
+        )
         return 1
 
     # Setup logging

@@ -50,7 +50,7 @@ Enable **"Start on Windows Login"** to automatically launch the tray app when yo
 ### Authentication Bootstrap
 - Tray auth uses Twitch Device Code Flow.
 - After successful auth, the app fetches the authenticated user via Helix `/users`.
-- Broadcaster identity is persisted in `StateStore`; `config.json` is updated only when `broadcaster_id` is empty.
+- Broadcaster identity is persisted in `StateStore`; `config.json` is updated when `broadcaster_id` is blank/placeholder.
 - The auth dialog auto-closes on success and a tray notification shows `Authenticated as <display_name>`.
 
 ## Default Behavior
@@ -64,6 +64,10 @@ Enable **"Start on Windows Login"** to automatically launch the tray app when yo
 The tray app loads settings from `config.json` in the runtime base directory:
 - Frozen exe: directory containing `TwitchMarkerAgent.exe`
 - Dev mode: current working directory (`Path.cwd()`)
+- If missing, `config.json` is auto-created on startup from bootstrap template data.
+- Official releases should include seeded `client_id`; end users should not need to edit it.
+- If `client_id` remains placeholder, tray auth is blocked and treated as an unseeded build.
+- Local builders can seed with `TWITCH_MARKER_AGENT_CLIENT_ID`; local builds also fallback to `local.config.json` `client_id`.
 
 See the main README for configuration details.
 
