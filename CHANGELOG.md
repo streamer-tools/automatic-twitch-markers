@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - Auth-status checks in tray flow are refresh-aware to reduce unnecessary reauthentication prompts.
+- Release documentation refactor: split docs by audience (`docs/user` and `docs/dev`), restored `Why This Tool` + `Goals` in `README.md`, and reconciled `OLD_README` content retention.
 
 ### Fixed
 - Auto Mode marker attribution regression by passing broadcaster `user_id` in video-specific marker fetch path.
