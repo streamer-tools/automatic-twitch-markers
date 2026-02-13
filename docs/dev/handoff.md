@@ -76,7 +76,7 @@ python -m twitch_marker_agent.cli auth-login
 - **`src/twitch_marker_agent/platform/windows_startup.py`**:
   - Windows-specific registry integration (HKCU Run key).
 
-**Deep Dive**: [Auto Mode](auto_mode.md) | [Tray App](tray_app.md) | [Windows Startup](windows_startup.md)
+**Deep Dive**: [Auto Mode](../auto_mode.md) | [Tray App](../tray_app.md) | [Windows Startup](../windows_startup.md)
 
 ## 6. Operational Playbook
 - **Gating**:
@@ -93,8 +93,8 @@ python -m twitch_marker_agent.cli auth-login
 - **Model Selection** (always start prompts with "Model pick (why)" block):
   - **ChatGPT (GPT-5.2 Thinking)**: RUN 1 prompt crafting, spec tightening, post-RUN 2 review, PR/commit writing
   - **GPR-5.3-Codex**: (Antigravity): Default for most RUN 2 implementations, straightforward debugging, tests, small fixes, docs.
-  - **Claude Sonnet 4.5** (Antigravity): Backup for most RUN 2 implementations, straightforward debugging, tests, small fixes, docs. Use when Codex is not available, or if Sonnet is better suited for the task. **Sonnet-safe ✅**
-  - **Claude Opus 4.5** (Antigravity): Use for complex tasks with unclear root cause, multi-file interactions, async/race conditions, auth/security, flakiness, or when we need maximum quality. **Opus-worthy 🧠**
+  - **Claude Sonnet 4.5** (Antigravity): Backup for most RUN 2 implementations, straightforward debugging, tests, small fixes, docs. Use when Codex is not available, or if Sonnet is better suited for the task. **Sonnet-safe [DONE]**
+  - **Claude Opus 4.5** (Antigravity): Use for complex tasks with unclear root cause, multi-file interactions, async/race conditions, auth/security, flakiness, or when we need maximum quality. **Opus-worthy [BRAIN]**
   - **Gemini 3 Pro (High)**: Docs-only changes, simple mechanical patches, fallback when Claude quota capped 
   - *Note: Opus and Sonnet share quota pool; prefer Sonnet when sufficient; use Opus when it materially improves quality/saves time.*
 - **Testing**: 100% Mock-based. No real registry or network access.
@@ -106,7 +106,7 @@ python -m twitch_marker_agent.cli auth-login
 
 ## 8. Quick Restart Checklist
 1. **Pull latest** and ensure clean git state.
-2. **Read** `AGENTS.md` and this file (`docs/handoff.md`).
+2. **Read** `AGENTS.md` and this file (`docs/dev/handoff.md`).
 3. **Run tests** (`python -m unittest discover -s tests -v`) to confirm baseline.
 4. **Check** `README.md` changelog and open tasks for active scope.
 5. **Generate RUN 1** prompt for planning.

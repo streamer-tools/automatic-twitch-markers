@@ -89,7 +89,7 @@ All tests pass, including 3 new shutdown/timeout tests.
 ## Validation
 
 ### Automated Tests
-✅ All 301 tests passing:
+[DONE] All 301 tests passing:
 - 298 existing tests (unchanged)
 - 1 new AgentRunner stop-responsive test
 - 2 new stop_auto_mode timeout tests
@@ -102,9 +102,9 @@ All tests pass, including 3 new shutdown/timeout tests.
    - Cleanup timeout prevents indefinite hang (2s max)
 
 2. **stop_auto_mode accuracy:**
-   - When thread exits: `is_running=False`, thread=None ✅
-   - When timeout: `is_running=True`, thread preserved, error message ✅
-   - Always calls `agent.request_stop()` ✅
+   - When thread exits: `is_running=False`, thread=None [DONE]
+   - When timeout: `is_running=True`, thread preserved, error message [DONE]
+   - Always calls `agent.request_stop()` [DONE]
 
 3. **No hanging threads:**
    - All test threads are daemon or short-lived
@@ -123,13 +123,13 @@ All tests pass, including 3 new shutdown/timeout tests.
 
 ## Compliance Verification
 
-✅ **No secrets logged:** No changes to logging code; existing secret-safe patterns maintained  
-✅ **No new dependencies:** Only used existing asyncio stdlib  
-✅ **No config schema changes:** No config file modifications  
-✅ **No StateStore signature changes:** No StateStore modifications  
-✅ **core/ remains DI-friendly:** AgentRunner still uses dependency injection  
-✅ **Tests: unittest only:** All 3 new tests use `unittest` + `unittest.mock`, no network  
-✅ **Minimal diffs:** Focused changes, no unrelated refactors  
+[DONE] **No secrets logged:** No changes to logging code; existing secret-safe patterns maintained  
+[DONE] **No new dependencies:** Only used existing asyncio stdlib  
+[DONE] **No config schema changes:** No config file modifications  
+[DONE] **No StateStore signature changes:** No StateStore modifications  
+[DONE] **core/ remains DI-friendly:** AgentRunner still uses dependency injection  
+[DONE] **Tests: unittest only:** All 3 new tests use `unittest` + `unittest.mock`, no network  
+[DONE] **Minimal diffs:** Focused changes, no unrelated refactors  
 
 ## User Impact
 
@@ -156,7 +156,7 @@ All tests pass, including 3 new shutdown/timeout tests.
 
 2. **Tray exit with Auto Mode running:**
    - Start Auto Mode
-   - Right-click tray icon → Exit
+   - Right-click tray icon -> Exit
    - Should exit tray app within 1 second
    - Gracefully cancel async tasks
 

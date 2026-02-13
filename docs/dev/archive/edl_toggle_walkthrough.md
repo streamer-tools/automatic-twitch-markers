@@ -73,7 +73,7 @@ Successfully implemented EDL toggle simplification to improve tray UX. CSV is no
 **Created [`docs/tray_app.md`](file:///c:/GoodVibez/automatic-twitch-markers/docs/tray_app.md):**
 - Comprehensive tray app user guide
 - Explains CSV is always exported (implicit)
-- Documents "Additional Output Format" → "EDL" toggle
+- Documents "Additional Output Format" -> "EDL" toggle
 - Notes that toggle affects both manual fetch and auto mode
 - Includes tips, default behavior, and configuration guidance
 
@@ -93,12 +93,12 @@ All tests passing, including:
 
 ### Key Behaviors Verified
 
-✅ **Default EDL state:** False (CSV-only)  
-✅ **EDL toggle persistence:** Survives restarts via StateStore  
-✅ **Manual fetch:** Respects EDL flag from StateStore  
-✅ **Auto mode:** Respects EDL flag from StateStore with config fallback  
-✅ **Menu checkbox:** Reflects persisted EDL state  
-✅ **Format derivation:** `("csv",)` when disabled, `("csv", "edl")` when enabled
+[DONE] **Default EDL state:** False (CSV-only)  
+[DONE] **EDL toggle persistence:** Survives restarts via StateStore  
+[DONE] **Manual fetch:** Respects EDL flag from StateStore  
+[DONE] **Auto mode:** Respects EDL flag from StateStore with config fallback  
+[DONE] **Menu checkbox:** Reflects persisted EDL state  
+[DONE] **Format derivation:** `("csv",)` when disabled, `("csv", "edl")` when enabled
 
 ## Files Changed
 
@@ -114,13 +114,13 @@ All tests passing, including:
 
 ## Compliance Verification
 
-✅ **No secrets logged:** No changes to logging; existing secret-safe patterns maintained  
-✅ **No new dependencies:** Only used existing StateStore methods  
-✅ **No config schema changes:** `config.export_formats` unchanged, EDL toggle is tray-only  
-✅ **No StateStore signature changes:** Used existing `get_state()` / `set_state()`  
-✅ **core/ remains DI-friendly:** Pure functions in `tray_controller.py`  
-✅ **Tests: unittest only:** All tests use `unittest` + `unittest.mock`, no network calls  
-✅ **Minimal diffs:** Focused changes, removed obsolete code
+[DONE] **No secrets logged:** No changes to logging; existing secret-safe patterns maintained  
+[DONE] **No new dependencies:** Only used existing StateStore methods  
+[DONE] **No config schema changes:** `config.export_formats` unchanged, EDL toggle is tray-only  
+[DONE] **No StateStore signature changes:** Used existing `get_state()` / `set_state()`  
+[DONE] **core/ remains DI-friendly:** Pure functions in `tray_controller.py`  
+[DONE] **Tests: unittest only:** All tests use `unittest` + `unittest.mock`, no network calls  
+[DONE] **Minimal diffs:** Focused changes, removed obsolete code
 
 ## User Impact
 
@@ -130,7 +130,7 @@ All tests passing, including:
 - Confusing UX: CSV shown as always-on but taking menu space
 
 ### After
-- "Additional Output Format" → "EDL" (single clean toggle)
+- "Additional Output Format" -> "EDL" (single clean toggle)
 - EDL preference persists across restarts
 - Clearer UX: CSV implicit (always exported), EDL explicit (optional)
 - **Single source of truth:** Manual fetch and auto mode both respect same toggle
@@ -142,24 +142,24 @@ All tests passing, including:
 1. **Default behavior:**
    - Launch tray app (fresh state)
    - Verify EDL is unchecked in menu
-   - Run manual fetch → should export CSV only
+   - Run manual fetch -> should export CSV only
 
 2. **Enable EDL:**
-   - Check "Additional Output Format" → "EDL"
-   - Run manual fetch → should export CSV + EDL
-   - Restart tray app → EDL should still be checked
+   - Check "Additional Output Format" -> "EDL"
+   - Run manual fetch -> should export CSV + EDL
+   - Restart tray app -> EDL should still be checked
 
 3. **Disable EDL:**
    - Uncheck EDL toggle
-   - Run manual fetch → should export CSV only
-   - Restart → EDL should remain unchecked
+   - Run manual fetch -> should export CSV only
+   - Restart -> EDL should remain unchecked
 
 4. **Auto mode:**
    - Enable EDL toggle
    - Start auto mode
    - Trigger stream offline event
    - Verify CSV + EDL exported
-   - Disable EDL and run again → CSV only
+   - Disable EDL and run again -> CSV only
 
 ## Conclusion
 

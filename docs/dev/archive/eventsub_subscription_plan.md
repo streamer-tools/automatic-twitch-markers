@@ -2,7 +2,7 @@
 
 **Goal:** Create EventSub subscription via Helix API after receiving session_id from WebSocket.
 
-**Status:** ✅ RUN 2 Complete - Implementation Done
+**Status:** [DONE] RUN 2 Complete - Implementation Done
 
 ---
 
@@ -10,10 +10,10 @@
 
 | # | Suggestion | Status |
 |---|------------|--------|
-| 1 | GET /eventsub/subscriptions filters are mutually exclusive (only ONE of type, user_id, status, subscription_id) | ✅ Accepted - use type filter, filter by broadcaster_id client-side |
-| 2 | "Ensure" pattern must be fast due to Twitch "subscribe quickly" window after session_welcome | ✅ Accepted - keep list/delete/create tight |
-| 3 | Condition may be dict OR JSON string in response - parse tolerantly | ✅ Accepted |
-| 4 | DELETE endpoint uses query param `?id=<sub_id>`, not path segment | ✅ Accepted |
+| 1 | GET /eventsub/subscriptions filters are mutually exclusive (only ONE of type, user_id, status, subscription_id) | [DONE] Accepted - use type filter, filter by broadcaster_id client-side |
+| 2 | "Ensure" pattern must be fast due to Twitch "subscribe quickly" window after session_welcome | [DONE] Accepted - keep list/delete/create tight |
+| 3 | Condition may be dict OR JSON string in response - parse tolerantly | [DONE] Accepted |
+| 4 | DELETE endpoint uses query param `?id=<sub_id>`, not path segment | [DONE] Accepted |
 
 ## Preflight Q&A
 
@@ -125,7 +125,7 @@ Content-Type: application/json
 **Current state:** `EventSubWebSocketClient.connect()` returns session_id after receiving session_welcome.
 
 **Decision:** We do NOT need a new hook/callback for welcome events. The caller (agent.py orchestrator) will:
-1. Call `client.connect()` → get session_id
+1. Call `client.connect()` -> get session_id
 2. Call subscription creation with session_id
 3. Call `client.run_until_stopped()`
 
@@ -139,7 +139,7 @@ This is simple and matches the README flow.
 
 **Options:**
 - A) Fire-and-forget: Simple but hits limit after 3 restarts
-- B) Ensure-subscription: List → check → create only if missing
+- B) Ensure-subscription: List -> check -> create only if missing
 
 **Recommendation:** **Option B - Ensure subscription pattern**
 
@@ -150,9 +150,9 @@ This is simple and matches the README flow.
 1. `GET /eventsub/subscriptions?type=stream.offline` (filter by type only)
 2. **Client-side filter** by `condition.broadcaster_user_id == broadcaster_id`
 3. Check for existing enabled websocket subscription
-4. If found with matching session_id → skip (already subscribed)
-5. If found with different/stale session_id → delete stale sub, create new
-6. If none found → create new
+4. If found with matching session_id -> skip (already subscribed)
+5. If found with different/stale session_id -> delete stale sub, create new
+6. If none found -> create new
 
 > [!WARNING]
 > **Timing Constraint:** Twitch expects subscription creation quickly after `session_welcome`. Keep the ensure flow tight: single list call, minimal deletes, then create immediately.
@@ -210,8 +210,8 @@ This is simple and matches the README flow.
 **Tests location:** `tests/test_eventsub_subscriptions.py`
 
 **Pure helpers for easy testing:**
-- `build_subscription_request(type, version, condition, session_id)` → dict
-- `parse_subscription_response(response_data)` → Subscription dataclass
+- `build_subscription_request(type, version, condition, session_id)` -> dict
+- `parse_subscription_response(response_data)` -> Subscription dataclass
 
 **Tests required:**
 
@@ -228,9 +228,9 @@ This is simple and matches the README flow.
 | `test_list_subscriptions` | Mock GET, verify parsing |
 | `test_list_subscriptions_rejects_multiple_filters` | Raises ValueError if type AND user_id passed |
 | `test_delete_subscription` | Mock DELETE 204, verify no error |
-| `test_ensure_subscription_creates_if_none` | List empty → create called |
-| `test_ensure_subscription_skips_if_exists` | List has matching → skip |
-| `test_ensure_subscription_deletes_stale` | List has stale → delete + create |
+| `test_ensure_subscription_creates_if_none` | List empty -> create called |
+| `test_ensure_subscription_skips_if_exists` | List has matching -> skip |
+| `test_ensure_subscription_deletes_stale` | List has stale -> delete + create |
 
 ---
 
@@ -385,7 +385,7 @@ def ensure_stream_offline_subscription(
 - Handle 204 success, errors
 
 ### Step 6: ensure_stream_offline_subscription()
-- Orchestrate list → delete stale → create
+- Orchestrate list -> delete stale -> create
 - Log actions
 
 ### Step 7: Remove Legacy Stub
@@ -412,8 +412,8 @@ def ensure_stream_offline_subscription(
 
 ## Out of Scope (This Step)
 
-- ❌ stream.offline event handling (next step)
-- ❌ Agent orchestration wiring
-- ❌ Get Stream Markers API
-- ❌ New dependencies
-- ❌ Config schema changes
+- [NO] stream.offline event handling (next step)
+- [NO] Agent orchestration wiring
+- [NO] Get Stream Markers API
+- [NO] New dependencies
+- [NO] Config schema changes

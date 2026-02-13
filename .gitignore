@@ -16,7 +16,11 @@ logs/
 
 # Python env/caches
 .venv/
+.venv-build/
+.dev/
 __pycache__/
 *.pyc
+*.py[cod]
 dist/
 build/
+test_output/

@@ -54,9 +54,9 @@ def __init__(
 ```
 
 **Implemented Methods:**
-- `build_authorize_url(scopes)` → authorization URL with CSRF state
-- `interactive_login(timeout_seconds=120)` → full browser OAuth flow
-- `has_refresh_token()` → check if refresh token exists
+- `build_authorize_url(scopes)` -> authorization URL with CSRF state
+- `interactive_login(timeout_seconds=120)` -> full browser OAuth flow
+- `has_refresh_token()` -> check if refresh token exists
 
 **Stubbed Methods (Phase C):**
 - `refresh_access_token()`

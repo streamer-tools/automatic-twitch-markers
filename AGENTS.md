@@ -1,4 +1,4 @@
-# AGENTS.md - AI Coding Assistant Rules
+﻿# AGENTS.md - AI Coding Assistant Rules
 
 This file contains rules and invariants for AI coding assistants working on this repository.
 
@@ -46,16 +46,15 @@ If a secret is ever committed by mistake:
 1. **Core Independence**: `src/twitch_marker_agent/core/` MUST NOT import from:
    - `app.py` (tray UI)
    - `cli.py` (CLI entrypoint)
-   - `integrations/*` (external integrations)
    - Any web framework (Flask, FastAPI, etc.)
    - Any tray library (pystray, etc.)
 
 2. **Import Direction** (one-way only):
    ```
-   Entry points (app.py, cli.py, integrations/*)
-         ↓
+   Entry points (app.py, cli.py)
+         ->
    core/agent_runner.py (async orchestrator for tray Auto Mode)
-         ↓
+         ->
    core/* modules (config, state_store, twitch_oauth, etc.)
    ```
 
@@ -65,35 +64,24 @@ If a secret is ever committed by mistake:
    - `state_store: StateStore`
    - `logger: logging.Logger`
 
-### Stubbing Rules (Scaffold Phase)
+### Implemented Components
 
-During scaffold development, modules are implemented incrementally:
-
-**Implemented:**
 - OAuth login flow (`twitch_oauth.py` - `interactive_login`, `auth-login` CLI)
 - Device Code Flow auth (`core/device_auth.py`, `ui/device_auth_dialog.py`)
 - Auth identity bootstrap (`core/auth_identity.py` - fetch/persist/resolve broadcaster identity)
 - Token maintenance (`twitch_oauth.py` - `refresh_access_token`, `validate_access_token`, `get_valid_user_access_token`)
-- Configuration loading (`config.py`)
-- First-launch config bootstrap (`config.py` - `ensure_config_exists`, `write_bootstrap_template`, `resolve_client_id_seed`, placeholder checks)
-- Runtime path resolution (`runtime_paths.py` - EXE-relative/CWD-relative config/log/state paths)
+- Configuration loading/bootstrap (`config.py`)
+- Runtime path resolution (`runtime_paths.py`)
 - State storage (`state_store.py`)
 - Retry utility (`retry.py`)
-- EventSub WebSocket (`eventsub_ws.py` - `connect`, `run_until_stopped`, message dispatch)
-- EventSub Subscriptions (`eventsub_subscriptions.py` - `ensure_stream_offline_subscription`, create/list/delete)
-- Helix Markers API (`markers_api.py` - `get_stream_markers`, `get_latest_video_id`)
-- Helix Videos API (`videos_api.py` - `list_videos_in_date_range`, `ArchivedVideo` dataclass)
-- Stream Offline Handler (`offline_handler.py` - `handle_stream_offline`, `should_handle_notification`)
-- CSV Export (`export_csv.py` - `export_markers_csv`)
-- EDL Export (`export_edl.py` - `export_markers_edl`, `timecode_to_seconds`, config-driven offset)
-- Tray App UI (`app.py` - `run_tray_app`, manual fetch, multi-fetch, format toggles, folder picker, auto mode start/stop)
-- Tray Controller (`tray_controller.py` - `resolve_output_dir`, `set_output_dir`, `run_manual_fetch`, `run_multi_fetch`, `start_auto_mode`, `stop_auto_mode`, device auth functions)
-- Agent Runner (`agent_runner.py` - async EventSub orchestrator with connect/subscribe/dispatch)
-- Date Range Dialog (`ui/date_range_dialog.py` - `DateRangeDialog` tkinter modal)
-- Device Auth Dialog (`ui/device_auth_dialog.py` - `DeviceAuthDialog` tkinter modal)
-
-**Still Stubbed:**
-- Legacy orchestrator (`core/agent.py`): Superseded by `agent_runner.py`
+- EventSub WebSocket (`eventsub_ws.py`)
+- EventSub subscriptions (`eventsub_subscriptions.py`)
+- Helix markers/videos APIs (`markers_api.py`, `videos_api.py`)
+- Offline handler (`offline_handler.py`)
+- CSV/EDL export (`export_csv.py`, `export_edl.py`)
+- Tray UI/controller (`app.py`, `tray_controller.py`)
+- Async auto mode orchestrator (`agent_runner.py`)
+- Date/device dialogs (`ui/date_range_dialog.py`, `ui/device_auth_dialog.py`)
 
 **Architecture Invariant:** `core/*` must not import pystray or any UI libraries. Tray UI code lives in `app.py` only.
 
@@ -115,7 +103,7 @@ Minimize dependencies. Only add new dependencies when explicitly approved.
 - `websockets` - EventSub WebSocket
 - `pystray` - System tray integration
 - `Pillow` - Tray icon image support
-- `ttkbootstrap` - Modern ttk themes and DateEntry widget for multi-fetch dialog
+- `ttkbootstrap` - ttk themes and DateEntry widget for multi-fetch dialog
 
 ## Commands
 
@@ -133,48 +121,50 @@ python -m unittest discover -s tests -v
 
 ### Import Check
 ```powershell
-python -c "from twitch_marker_agent.core import agent"
+python -c "from twitch_marker_agent.core.config import load_config"
 ```
 
 ## Architecture Map
 
-```
-┌─────────────────────────────────────────────────┐
-│              ENTRY POINTS                       │
-│  cli.py  |  app.py  |  integrations/*           │
-└─────────────────┬───────────────────────────────┘
-                  ▼
-┌─────────────────────────────────────────────────┐
-│           core/agent_runner.py                  │
-│  Async orchestrator: OAuth → EventSub → Export  │
-└─────────────────┬───────────────────────────────┘
-                  ▼
-┌─────────────────────────────────────────────────┐
-│              CORE MODULES                       │
-│  config | state_store | retry | logging_setup   │
-│  twitch_oauth | eventsub_ws | markers_api       │
-│  export_csv | export_edl                        │
-└─────────────────────────────────────────────────┘
+```text
++------------------------------+
+|         ENTRY POINTS         |
+|     cli.py  |  app.py        |
++------------------------------+
+               |
+               v
++------------------------------+
+|     core/agent_runner.py     |
+| Async orchestrator for tray  |
+| OAuth -> EventSub -> Export  |
++------------------------------+
+               |
+               v
++------------------------------+
+|         CORE MODULES         |
+| config | state_store | retry |
+| twitch_oauth | eventsub_ws   |
+| markers_api | export_*       |
++------------------------------+
 ```
 
 ## File Purposes
 
 | File | Purpose |
 |------|---------|
-| `config.py` | Load/validate config.json, expose `AppConfig`, and bootstrap config template creation helpers |
-| `runtime_paths.py` | Resolve runtime base/config/log/state paths for portable execution |
-| `auth_identity.py` | Fetch/persist authenticated broadcaster identity and resolve broadcaster_id |
+| `config.py` | Load/validate config and bootstrap template helpers |
+| `runtime_paths.py` | Resolve runtime base/config/log/state paths |
+| `auth_identity.py` | Fetch/persist authenticated broadcaster identity |
 | `state_store.py` | SQLite wrapper for state + token storage |
-| `retry.py` | Sync exponential backoff (async TODO) |
-| `twitch_oauth.py` | Browser OAuth + token refresh/validate |
-| `eventsub_ws.py` | EventSub WebSocket client (connect, message dispatch) |
-| `eventsub_subscriptions.py` | Helix EventSub subscription management (ensure, create, list, delete) |
-| `markers_api.py` | Helix Get Stream Markers + Get Videos (latest VOD) |
-| `offline_handler.py` | Stream offline notification handling with retry/dedupe |
+| `retry.py` | Sync exponential backoff utility |
+| `twitch_oauth.py` | OAuth login/refresh/validate/token lifecycle |
+| `eventsub_ws.py` | EventSub WebSocket client |
+| `eventsub_subscriptions.py` | Helix EventSub subscription management |
+| `markers_api.py` | Helix stream marker + latest video APIs |
+| `offline_handler.py` | Stream offline notification handling |
 | `export_csv.py` | Twitch-style CSV export |
-| `export_edl.py` | EDL export with timecode offset |
-| `agent_runner.py` | Async EventSub orchestrator (tray Auto Mode) |
-| `agent.py` | Legacy orchestrator stub (superseded by agent_runner) |
+| `export_edl.py` | Resolve-compatible EDL export |
+| `agent_runner.py` | Async EventSub orchestrator for Auto Mode |
 
 ### Platform-Specific Modules
 

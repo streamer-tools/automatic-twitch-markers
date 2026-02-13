@@ -2,7 +2,7 @@
 
 **Goal:** Connect to Twitch EventSub WebSocket and handle message types.
 
-**Status:** ✅ RUN 2 Complete - Implementation Done
+**Status:** [DONE] RUN 2 Complete - Implementation Done
 
 ---
 
@@ -10,11 +10,11 @@
 
 | # | Suggestion | Status |
 |---|------------|--------|
-| 1 | Use `ping_interval=None` in `websockets.connect()` - Twitch closes connection on client messages other than Pong | ✅ Accepted |
-| 2 | Don't assume session_id stays same on reconnect - update from new Welcome | ✅ Accepted |
-| 3 | Keepalive timeout = subscription deadline - log warning that caller must subscribe quickly | ✅ Accepted |
-| 4 | `asyncio.Queue` is async-friendly within loop, not thread-safe - fix wording | ✅ Accepted |
-| 5 | Use `wait_for(ws.recv())` pattern instead of `async for` - easier shutdown/testing | ✅ Accepted |
+| 1 | Use `ping_interval=None` in `websockets.connect()` - Twitch closes connection on client messages other than Pong | [DONE] Accepted |
+| 2 | Don't assume session_id stays same on reconnect - update from new Welcome | [DONE] Accepted |
+| 3 | Keepalive timeout = subscription deadline - log warning that caller must subscribe quickly | [DONE] Accepted |
+| 4 | `asyncio.Queue` is async-friendly within loop, not thread-safe - fix wording | [DONE] Accepted |
+| 5 | Use `wait_for(ws.recv())` pattern instead of `async for` - easier shutdown/testing | [DONE] Accepted |
 
 ---
 
@@ -28,11 +28,11 @@
 - `EVENTSUB_WS_URL = "wss://eventsub.wss.twitch.tv/ws"`
 - `EventSubMessage` dataclass (message_type, payload, subscription_type)
 - `EventSubClient` class with stubbed methods:
-  - `connect()` → raises NotImplementedError
-  - `subscribe_stream_offline()` → raises NotImplementedError (OUT OF SCOPE)
-  - `run()` → raises NotImplementedError
-  - `shutdown()` → raises NotImplementedError
-  - `_parse_message()` → partially implemented (JSON parse + extract metadata)
+  - `connect()` -> raises NotImplementedError
+  - `subscribe_stream_offline()` -> raises NotImplementedError (OUT OF SCOPE)
+  - `run()` -> raises NotImplementedError
+  - `shutdown()` -> raises NotImplementedError
+  - `_parse_message()` -> partially implemented (JSON parse + extract metadata)
 
 **Decision:** Preserve `EventSubMessage` dataclass. Rename class to `EventSubWebSocketClient` for clarity. Keep `subscribe_stream_offline` stubbed (next README step).
 
@@ -213,7 +213,7 @@ async def close(self) -> None:
 ### 9) Testing Strategy
 
 **Pure helpers for unit testing:**
-- `parse_eventsub_message(raw_json)` - JSON → EventSubMessage
+- `parse_eventsub_message(raw_json)` - JSON -> EventSubMessage
 - `classify_message_type(message)` - returns type string
 
 **Mocking websockets:**
@@ -299,9 +299,9 @@ with patch("websockets.connect", return_value=async_context_manager(mock_ws)):
 
 ## Out of Scope (This Step)
 
-- ❌ Helix subscription creation (subscribe_stream_offline stays stubbed)
-- ❌ stream.offline event handling
-- ❌ Agent orchestration wiring
-- ❌ Automatic retry with backoff (caller responsibility)
-- ❌ Config schema changes
-- ❌ New dependencies
+- [NO] Helix subscription creation (subscribe_stream_offline stays stubbed)
+- [NO] stream.offline event handling
+- [NO] Agent orchestration wiring
+- [NO] Automatic retry with backoff (caller responsibility)
+- [NO] Config schema changes
+- [NO] New dependencies

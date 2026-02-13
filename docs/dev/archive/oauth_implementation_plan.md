@@ -8,7 +8,7 @@ Complete OAuth implementation including login flow (Phase B) and token maintenan
 
 **Goal:** Full OAuth lifecycle: browser login, token storage, refresh, validation, and expiry-aware access.
 
-**Status:** ✅ Phase B (login) + Phase C (token maintenance) complete.
+**Status:** [DONE] Phase B (login) + Phase C (token maintenance) complete.
 
 **Files:**
 - `src/twitch_marker_agent/core/twitch_oauth.py` (implemented)
@@ -21,10 +21,10 @@ Complete OAuth implementation including login flow (Phase B) and token maintenan
 
 ### 1) Test Strategy (No Port Binding)
 Factor pure helper functions for unit testing without network/port:
-- `build_authorize_url(client_id, redirect_uri, scopes, state)` → URL string
-- `parse_redirect_uri(uri)` → `(host, port, path)` tuple
-- `compute_expires_at(expires_in_seconds)` → UTC ISO8601 string
-- `_validate_callback_params(params, expected_state)` → code or raises
+- `build_authorize_url(client_id, redirect_uri, scopes, state)` -> URL string
+- `parse_redirect_uri(uri)` -> `(host, port, path)` tuple
+- `compute_expires_at(expires_in_seconds)` -> UTC ISO8601 string
+- `_validate_callback_params(params, expected_state)` -> code or raises
 
 ### 2) Callback Handling + Shutdown
 1. `threading.Thread` runs `HTTPServer.serve_forever()`
@@ -74,13 +74,13 @@ logger.error(f"Token exchange failed: {error} - {error_description}")
 
 | # | Change | Decision | Rationale |
 |---|--------|----------|-----------|
-| 1 | Keep `TwitchOAuth` name | ✅ Agree | Avoids breaking existing imports |
-| 2 | Explicit DI constructor | ✅ Agree | Testable, consistent with AGENTS.md |
-| 3 | Pure state validation helper | ✅ Agree | Unit-testable without port binding |
-| 4 | Timezone-aware UTC ISO8601 | ✅ Agree | Prevents datetime comparison bugs |
-| 5 | Bind `127.0.0.1` + `allow_reuse_address` | ✅ Agree | Safer + reduces port-stuck on Windows |
-| 6 | Defensive refresh_token storage | ✅ Agree | Never overwrite with None |
-| 7 | Repo-relative paths only | ✅ Agree | Portable documentation |
+| 1 | Keep `TwitchOAuth` name | [DONE] Agree | Avoids breaking existing imports |
+| 2 | Explicit DI constructor | [DONE] Agree | Testable, consistent with AGENTS.md |
+| 3 | Pure state validation helper | [DONE] Agree | Unit-testable without port binding |
+| 4 | Timezone-aware UTC ISO8601 | [DONE] Agree | Prevents datetime comparison bugs |
+| 5 | Bind `127.0.0.1` + `allow_reuse_address` | [DONE] Agree | Safer + reduces port-stuck on Windows |
+| 6 | Defensive refresh_token storage | [DONE] Agree | Never overwrite with None |
+| 7 | Repo-relative paths only | [DONE] Agree | Portable documentation |
 
 ---
 
@@ -114,7 +114,7 @@ Server binds to `127.0.0.1` on port parsed from `config.redirect_uri`.
 
 ### Redirect URI Parsing
 Parse `config.redirect_uri` (e.g., `http://localhost:3000/callback`) to extract:
-- host: `localhost` → bind `127.0.0.1`
+- host: `localhost` -> bind `127.0.0.1`
 - port: `3000`
 - path: `/callback`
 
@@ -249,7 +249,7 @@ response = session.post(TWITCH_TOKEN_URL, data=data, timeout=HTTP_TIMEOUT)
 new_refresh = response_data.get("refresh_token")
 if new_refresh:  # Only store if present
     self._state_store.store_token(self.TOKEN_KEY_REFRESH, new_refresh)
-# If missing: do nothing → existing refresh token preserved
+# If missing: do nothing -> existing refresh token preserved
 ```
 
 **Rule:** Never call `store_token(KEY_REFRESH, None)`.
@@ -258,9 +258,9 @@ if new_refresh:  # Only store if present
 
 | HTTP Status | Return Value | Exception |
 |-------------|--------------|-----------|
-| 200 | Parsed JSON dict (includes `expires_in`, `login`, etc.) | — |
-| 401 | `None` | — |
-| Other (5xx, network) | — | `requests.RequestException` propagates |
+| 200 | Parsed JSON dict (includes `expires_in`, `login`, etc.) | -- |
+| 401 | `None` | -- |
+| Other (5xx, network) | -- | `requests.RequestException` propagates |
 
 **Validate call frequency:**
 `get_valid_user_access_token()` does NOT call validate on every call.
@@ -276,8 +276,8 @@ expires_at_str = expires_at.isoformat()  # "2026-02-02T23:30:00.123456+00:00"
 ```
 
 **Updates:**
-- `refresh_access_token()` → updates `twitch_token_expires_at` from refresh response
-- `validate_access_token()` → does NOT update stored expiry (read-only check)
+- `refresh_access_token()` -> updates `twitch_token_expires_at` from refresh response
+- `validate_access_token()` -> does NOT update stored expiry (read-only check)
 
 #### 6) Near-Expiry Policy
 
@@ -329,16 +329,16 @@ Test logic without real threads by mocking. The lock prevents race conditions in
 |------|-------------|
 | `test_refresh_success_stores_access_token` | Mock 200, verify access_token stored |
 | `test_refresh_success_stores_expires_at` | Verify expires_at computed and stored |
-| `test_refresh_rotates_refresh_token` | Response includes new refresh_token → stored |
-| `test_refresh_preserves_refresh_token_if_omitted` | Response omits refresh_token → old value kept |
-| `test_refresh_401_raises_error` | Mock 401 → raises TokenRefreshError |
-| `test_refresh_no_stored_token_raises` | No refresh_token in store → raises with "auth-login" message |
-| `test_validate_200_returns_dict` | Mock 200 → returns parsed JSON |
-| `test_validate_401_returns_none` | Mock 401 → returns None (no exception) |
-| `test_get_valid_token_returns_cached_when_fresh` | expires_at far future → returns cached, no HTTP |
-| `test_get_valid_token_refreshes_when_near_expiry` | expires_at soon → calls refresh, returns new token |
-| `test_get_valid_token_refreshes_when_expired` | expires_at past → calls refresh |
-| `test_get_valid_token_raises_when_no_tokens` | No tokens stored → raises with "auth-login" message |
+| `test_refresh_rotates_refresh_token` | Response includes new refresh_token -> stored |
+| `test_refresh_preserves_refresh_token_if_omitted` | Response omits refresh_token -> old value kept |
+| `test_refresh_401_raises_error` | Mock 401 -> raises TokenRefreshError |
+| `test_refresh_no_stored_token_raises` | No refresh_token in store -> raises with "auth-login" message |
+| `test_validate_200_returns_dict` | Mock 200 -> returns parsed JSON |
+| `test_validate_401_returns_none` | Mock 401 -> returns None (no exception) |
+| `test_get_valid_token_returns_cached_when_fresh` | expires_at far future -> returns cached, no HTTP |
+| `test_get_valid_token_refreshes_when_near_expiry` | expires_at soon -> calls refresh, returns new token |
+| `test_get_valid_token_refreshes_when_expired` | expires_at past -> calls refresh |
+| `test_get_valid_token_raises_when_no_tokens` | No tokens stored -> raises with "auth-login" message |
 
 ---
 
@@ -370,7 +370,7 @@ python -c "from twitch_marker_agent.core.twitch_oauth import TwitchOAuth"
 
 ### Phase C Implementation Results
 
-**Status:** ✅ Complete (with Phase C Patch)
+**Status:** [DONE] Complete (with Phase C Patch)
 
 **Changes Made:**
 

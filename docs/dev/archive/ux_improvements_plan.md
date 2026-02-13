@@ -13,12 +13,12 @@ This plan covers two areas of UX improvement:
 ### Q1: Menu Gating When Unauthenticated
 **Question:** When unauthenticated, should Output Folder / Start on Login remain enabled?
 
-**Decision:** ✅ Keep them enabled (they don't require Twitch auth)
+**Decision:** [DONE] Keep them enabled (they don't require Twitch auth)
 
 | Menu Item | Unauthenticated | Authenticated |
 |-----------|-----------------|---------------|
-| Auth status display | Enabled (shows "⚠ Not authenticated") | Enabled (shows "✓ Connected as X") |
-| Authenticate with Twitch… | Enabled + Visible | Hidden |
+| Auth status display | Enabled (shows "[WARN] Not authenticated") | Enabled (shows "[OK] Connected as X") |
+| Authenticate with Twitch... | Enabled + Visible | Hidden |
 | Disconnect Twitch | Hidden | Enabled + Visible |
 | Start/Stop Auto Mode | **Disabled** | Enabled |
 | Fetch Latest Stream Markers | **Disabled** | Enabled |
@@ -31,14 +31,14 @@ This plan covers two areas of UX improvement:
 ### Q2: Multi-Fetch Preset Behavior
 **Question:** Should preset buttons set `end_date=today` or preserve current end_date?
 
-**Decision:** ✅ Presets always set `end_date=today` for predictable "Last N days" behavior
+**Decision:** [DONE] Presets always set `end_date=today` for predictable "Last N days" behavior
 
 Preset logic: `start_date = today - N`, `end_date = today`
 
 ### Q3: Calendar UX
 **Question:** Use `tkcalendar.DateEntry` - allow typing or calendar-only?
 
-**Decision:** ✅ Allow typing + validate; set `mindate`/`maxdate` to enforce range
+**Decision:** [DONE] Allow typing + validate; set `mindate`/`maxdate` to enforce range
 - DateEntry supports both keyboard input and dropdown calendar
 - Use `date_pattern='yyyy-mm-dd'` for consistent display
 - Validate on OK to catch any edge cases
@@ -46,14 +46,14 @@ Preset logic: `start_date = today - N`, `end_date = today`
 ### Q4: Range Constraint
 **Question:** Confirm allowed window is last 60 days from today (inclusive)?
 
-**Decision:** ✅ Yes
+**Decision:** [DONE] Yes
 - `earliest_allowed = today - 60 days`
 - `latest_allowed = today`
 
 ### Q5: Auth UX - Browser + Copy Behavior
 **Question:** Auto-open `verification_uri_complete` when present?
 
-**Decision:** ✅ Yes
+**Decision:** [DONE] Yes
 - If Twitch returns `verification_uri_complete`, open that (pre-fills code)
 - Otherwise open `verification_uri` (user must paste code)
 - Auto-copy code to clipboard on dialog open
@@ -216,9 +216,9 @@ Apply `enabled=requires_auth_and_enabled` to:
 
 **`tests/test_menu_gating.py`** (new):
 - Extract `should_enable_twitch_action(is_authenticated, is_fetching)` pure helper
-- Test: unauthenticated → False
-- Test: authenticated + fetching → False
-- Test: authenticated + not fetching → True
+- Test: unauthenticated -> False
+- Test: authenticated + fetching -> False
+- Test: authenticated + not fetching -> True
 
 **Avoid:** Full tkinter event-loop testing
 
