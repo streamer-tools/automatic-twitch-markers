@@ -22,7 +22,7 @@ Prepare the repository for public release with minimal-risk cleanup:
 - Add `docs/README.md` (user docs index)
 - Add `docs/dev/README.md` (developer docs index)
 - Move implementation plans/walkthroughs to `docs/dev/archive/`
-- Move `docs/handoff.md` to `docs/dev/handoff.md`
+- Move `docs/dev/handoff.md` under developer docs (already completed)
 - Keep this file in `docs/dev/public_repo_polish.md`
 - Add an archive warning banner to every `docs/dev/archive/*.md`
 - Replace `file:///...` links with repo-relative links (no leading slash)

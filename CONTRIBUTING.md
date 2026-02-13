@@ -15,7 +15,7 @@ python -m unittest discover -s tests -v
 ```
 
 ## Build (Windows)
-See [docs/packaging.md](docs/packaging.md).
+See [docs/user/packaging.md](docs/user/packaging.md).
 
 ## Documentation Layout
 - User docs: [docs/README.md](docs/README.md)
