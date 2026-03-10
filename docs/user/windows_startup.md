@@ -8,6 +8,7 @@ This document describes the Windows startup integration feature, allowing the tr
 
 Uses Windows Registry: `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`
 
+- Registry value name: `AutomaticTwitchMarkers`
 - Uses only stdlib `winreg` module (no new dependencies)
 - Industry-standard approach for user-level startup apps
 - Survives reboots, user-controlled

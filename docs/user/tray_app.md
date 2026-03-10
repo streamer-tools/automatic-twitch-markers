@@ -10,6 +10,9 @@ When enabled, Auto Mode:
 - Detects `stream.offline` events.
 - Fetches markers from the relevant VOD.
 - Exports markers automatically.
+- **Remembers your preference** across app restarts and PC reboots.
+  - If Auto Mode was enabled at shutdown, it auto-starts on next launch (if authenticated).
+  - If authentication is invalid at launch, you are notified and can retry manually.
 
 Tray notifications:
 - Success and error notifications are shown for real Auto Mode processing outcomes.
@@ -48,7 +51,7 @@ Use **Start on Windows Login** to launch the tray app after sign-in.
 
 ## Default Behavior
 - EDL export: off (CSV only)
-- Auto Mode: stopped
+- Auto Mode: stopped (restores from last preference on next launch)
 - Output folder: from state/config resolution
 
 ## Related Docs

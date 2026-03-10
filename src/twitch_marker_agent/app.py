@@ -36,6 +36,7 @@ from twitch_marker_agent.tray_controller import (
     complete_device_auth_flow,
     disconnect_twitch,
     get_auth_status,
+    get_auto_mode_enabled,
     get_edl_enabled,
     get_manual_fetch_formats,
     resolve_output_dir,
@@ -576,7 +577,8 @@ def run_tray_app(
         nonlocal auto_state
         logger.info("Tray app exiting")
 
-        # Stop auto mode if thread is running
+        # Stop auto mode if thread is running (runtime stop, do NOT clear
+        # persisted preference — shutdown preserves user intent for next launch)
         if _is_auto_running(auto_state):
             auto_state = stop_auto_mode(auto_state, agent, logger)
 
@@ -590,7 +592,7 @@ def run_tray_app(
         if _is_auto_running(auto_state):
             return
 
-        auto_state = start_auto_mode(auto_state, agent, logger)
+        auto_state = start_auto_mode(auto_state, agent, logger, state_store=state_store)
         update_menu()
 
         # Notify user
@@ -607,7 +609,7 @@ def run_tray_app(
         if not _is_auto_running(auto_state):
             return
 
-        auto_state = stop_auto_mode(auto_state, agent, logger)
+        auto_state = stop_auto_mode(auto_state, agent, logger, state_store=state_store)
         update_menu()
 
         # Notify user
@@ -864,7 +866,7 @@ def run_tray_app(
     icon = pystray.Icon(
         name="twitch-marker-agent",
         icon=create_tray_icon(),
-        title="Twitch Marker Agent",
+        title="Automatic Twitch Markers",
         menu=create_tray_menu(
             state=state,
             auto_state=auto_state,
@@ -886,6 +888,38 @@ def run_tray_app(
     )
 
     logger.info("Starting tray app")
+
+    # Auto-start Auto Mode if user had it enabled before last shutdown
+    if (
+        get_auto_mode_enabled(state_store)
+        and cached_auth_status is not None
+        and cached_auth_status.is_authenticated
+    ):
+        logger.info("Restoring Auto Mode from persisted preference")
+        # Do NOT pass state_store — this is not an explicit user toggle,
+        # just restoring existing preference.  Preference is already True.
+        auto_state = start_auto_mode(auto_state, agent, logger)
+        update_menu()
+        try:
+            if icon:
+                icon.notify("Auto Mode restored", "Automatic Twitch Markers")
+        except Exception:
+            pass
+    elif get_auto_mode_enabled(state_store):
+        # User had Auto Mode enabled but auth is invalid
+        logger.info(
+            "Persisted Auto Mode enabled but auth is invalid; "
+            "skipping auto-start (preference preserved for next launch)"
+        )
+        try:
+            if icon:
+                icon.notify(
+                    "Auto Mode not started: authentication required",
+                    "Automatic Twitch Markers",
+                )
+        except Exception:
+            pass
+
     icon.run()
 
 

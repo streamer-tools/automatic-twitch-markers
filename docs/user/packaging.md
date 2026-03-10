@@ -1,6 +1,6 @@
 # Packaging Guide
 
-Build instructions for creating the Windows executable (`TwitchMarkerAgent.exe`).
+Build instructions for creating the Windows executable (`Automatic Twitch Markers.exe`).
 
 ## Local Build (PowerShell)
 
@@ -36,7 +36,7 @@ $env:TWITCH_MARKER_AGENT_ALLOW_PLACEHOLDER_BUILD = "1"
 ## Build Output
 ```text
 dist/
-└── TwitchMarkerAgent.exe
+└── Automatic Twitch Markers.exe
 ```
 
 ## CI/CD Release Build
@@ -45,7 +45,7 @@ GitHub Actions release workflow:
 2. Generates bootstrap config template.
 3. Validates seeded non-placeholder `client_id`.
 4. Builds exe via PyInstaller.
-5. Publishes zipped artifact for release tags.
+5. Publishes `automatic-twitch-markers-windows.zip` for release tags.
 
 ## Troubleshooting
 - If PowerShell blocks scripts, use an execution policy that permits local script execution.

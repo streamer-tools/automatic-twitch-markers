@@ -1,4 +1,4 @@
-# PowerShell script to build TwitchMarkerAgent.exe using PyInstaller
+# PowerShell script to build "Automatic Twitch Markers.exe" using PyInstaller
 # Run from repo root: .\scripts\build_exe.ps1
 
 param(
@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== Twitch Marker Agent - Build Script ===" -ForegroundColor Cyan
+Write-Host "=== Automatic Twitch Markers - Build Script ===" -ForegroundColor Cyan
 
 # Ensure we're in repo root
 if (-not (Test-Path "pyproject.toml")) {
@@ -60,11 +60,11 @@ if (-not $allowPlaceholderBuild) {
 }
 
 # Build exe with PyInstaller
-Write-Host "Building TwitchMarkerAgent.exe..." -ForegroundColor Green
+Write-Host "Building Automatic Twitch Markers.exe..." -ForegroundColor Green
 pyinstaller `
     --onefile `
     --noconsole `
-    --name TwitchMarkerAgent `
+    --name "Automatic Twitch Markers" `
     --paths src `
     --collect-submodules pystray `
     --collect-submodules PIL `
@@ -79,13 +79,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Verify output
-if (Test-Path "dist\TwitchMarkerAgent.exe") {
-    $size = (Get-Item "dist\TwitchMarkerAgent.exe").Length / 1MB
+if (Test-Path "dist\Automatic Twitch Markers.exe") {
+    $size = (Get-Item "dist\Automatic Twitch Markers.exe").Length / 1MB
     Write-Host "`nBuild successful!" -ForegroundColor Green
-    Write-Host "Output: dist\TwitchMarkerAgent.exe ($([math]::Round($size, 2)) MB)" -ForegroundColor Cyan
+    Write-Host "Output: dist\Automatic Twitch Markers.exe ($([math]::Round($size, 2)) MB)" -ForegroundColor Cyan
 } else {
     Write-Error "Build completed but exe not found at expected location"
     exit 1
 }
 
-Write-Host "`nTo test: .\dist\TwitchMarkerAgent.exe" -ForegroundColor Yellow
+Write-Host "`nTo test: .\dist\'Automatic Twitch Markers.exe'" -ForegroundColor Yellow

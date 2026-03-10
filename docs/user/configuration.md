@@ -5,7 +5,7 @@ This document is the full configuration reference for `config.json`.
 ## Runtime Path Behavior
 
 Runtime paths are portable-oriented:
-- Frozen EXE: base directory is the folder containing `TwitchMarkerAgent.exe`.
+- Frozen EXE: base directory is the folder containing `Automatic Twitch Markers.exe`.
 - Dev mode (`python -m ...`): base directory is `Path.cwd()`.
 
 Derived defaults:

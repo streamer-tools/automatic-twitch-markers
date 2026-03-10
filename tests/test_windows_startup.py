@@ -137,7 +137,7 @@ class TestEnableStartup(unittest.TestCase):
             mock_winreg.SetValueEx.assert_called_once()
             call_args = mock_winreg.SetValueEx.call_args
             self.assertEqual(call_args[0][0], mock_key)  # key
-            self.assertEqual(call_args[0][1], "TwitchMarkerAgent")  # value name
+            self.assertEqual(call_args[0][1], "AutomaticTwitchMarkers")  # value name
             self.assertEqual(call_args[0][3], mock_winreg.REG_SZ)  # type
             self.assertEqual(call_args[0][4], '"C:\\test\\app.exe"')  # command
 
@@ -185,7 +185,7 @@ class TestDisableStartup(unittest.TestCase):
             mock_winreg.DeleteValue.assert_called_once()
             call_args = mock_winreg.DeleteValue.call_args
             self.assertEqual(call_args[0][0], mock_key)  # key
-            self.assertEqual(call_args[0][1], "TwitchMarkerAgent")  # value name
+            self.assertEqual(call_args[0][1], "AutomaticTwitchMarkers")  # value name
 
     @patch.object(sys, "platform", "win32")
     def test_noop_when_value_missing(self) -> None:

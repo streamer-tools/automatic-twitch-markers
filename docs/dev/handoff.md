@@ -12,6 +12,8 @@
   - Helix API integration (Get Stream Markers, Get Videos)
   - Exports: Twitch-format CSV and Resolve-compatible EDL with offsets
   - Tray App: Manual fetch, multi-fetch (date range), config persistence, auto mode start/stop
+  - Auto Mode preference persistence across app restarts (StateStore-backed)
+  - Auto Mode lifecycle reconciliation (dead-thread detection, stale flag reset)
   - Broadcaster identity bootstrap after auth (`/helix/users` -> persisted in `StateStore`)
   - Portable runtime path anchoring (EXE-relative when frozen, CWD in dev)
   - First-launch config bootstrap (`config.json` auto-created if missing)
@@ -38,7 +40,7 @@ Derived from `AGENTS.md`:
 ## 4. How to Run (Local)
 
 **Prerequisites**:
-- `config.json` is auto-created on first run in repo root (dev) or next to `TwitchMarkerAgent.exe` (frozen)
+- `config.json` is auto-created on first run in repo root (dev) or next to `Automatic Twitch Markers.exe` (frozen)
 - Official release users should not need to set `client_id` manually
 - Local builders should set `TWITCH_MARKER_AGENT_CLIENT_ID` (or `local.config.json` `client_id`) before building
 - Leave `broadcaster_id` blank if desired; tray auth will auto-populate it after success
@@ -102,7 +104,8 @@ python -m twitch_marker_agent.cli auth-login
 ## 7. Active Work / Next Steps
 1. Validate portable zip behavior on a clean machine (fresh config, first auth, fetch flows).
 2. Confirm Windows startup toggle from packaged exe creates expected HKCU Run command.
-3. Prepare release notes and tag for v1.0.0.
+3. Confirm Auto Mode preference restores correctly across app restart and PC reboot.
+4. Prepare release notes and tag for v1.0.0.
 
 ## 8. Quick Restart Checklist
 1. **Pull latest** and ensure clean git state.

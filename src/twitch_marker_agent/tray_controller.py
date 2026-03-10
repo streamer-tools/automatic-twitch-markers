@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
 TRAY_OUTPUT_DIR_KEY = "tray.output_dir"
 TRAY_EDL_ENABLED_KEY = "tray.edl_enabled"
+TRAY_AUTO_MODE_ENABLED_KEY = "tray.auto_mode_enabled"
 
 
 # =============================================================================
@@ -465,6 +466,46 @@ def run_manual_fetch(
 
 
 # =============================================================================
+# Auto Mode Persistence Functions
+# =============================================================================
+
+
+def get_auto_mode_enabled(state_store: "StateStore") -> bool:
+    """
+    Get persisted Auto Mode enabled preference.
+
+    This represents user *intent* ("I want Auto Mode on"),
+    not runtime state ("the thread is alive").
+
+    Args:
+        state_store: State storage.
+
+    Returns:
+        True if user has enabled Auto Mode, False otherwise (default).
+    """
+    stored = state_store.get_state(TRAY_AUTO_MODE_ENABLED_KEY)
+    if stored is None:
+        return False
+    return str(stored).strip().lower() in ("true", "1", "yes")
+
+
+def set_auto_mode_enabled(state_store: "StateStore", enabled: bool) -> None:
+    """
+    Persist Auto Mode enabled preference.
+
+    Called only on explicit user toggle (start/stop from tray menu).
+    NOT called on app exit or auto-start failure.
+
+    Args:
+        state_store: State storage.
+        enabled: Whether user wants Auto Mode enabled.
+    """
+    state_store.set_state(
+        TRAY_AUTO_MODE_ENABLED_KEY, "true" if enabled else "false"
+    )
+
+
+# =============================================================================
 # Auto Mode Functions
 # =============================================================================
 
@@ -473,23 +514,37 @@ def start_auto_mode(
     state: AutoModeState,
     agent: "AgentRunner",
     logger: logging.Logger,
+    state_store: "StateStore | None" = None,
 ) -> AutoModeState:
     """
     Start the agent runner in a worker thread.
 
-    If already running, this is a no-op.
+    Derives running state from thread.is_alive() rather than the
+    stale is_running boolean flag, preventing the dead-thread
+    refusal-to-start bug.
+
+    If already running (thread alive), this is a no-op.
 
     Args:
         state: Current auto mode state.
         agent: AgentRunner instance.
         logger: Logger instance.
+        state_store: Optional state store for persisting user preference.
+            When provided, records that the user explicitly enabled
+            Auto Mode (persisted across app restarts).
 
     Returns:
         Updated AutoModeState.
     """
-    if state.is_running:
+    # Derive running from actual thread liveness, not stale flag
+    thread_alive = state.thread is not None and state.thread.is_alive()
+    if thread_alive:
         logger.debug("Auto mode already running, ignoring start request")
         return state
+
+    # Persist user intent (only when state_store provided = explicit toggle)
+    if state_store is not None:
+        set_auto_mode_enabled(state_store, True)
 
     def worker() -> None:
         """Worker thread that runs the async agent loop."""
@@ -519,24 +574,44 @@ def stop_auto_mode(
     agent: "AgentRunner",
     logger: logging.Logger,
     timeout_seconds: float = 5.0,
+    state_store: "StateStore | None" = None,
 ) -> AutoModeState:
     """
     Stop the agent runner gracefully.
 
-    If not running, this is a no-op.
+    Derives running state from thread.is_alive() rather than the
+    stale is_running boolean flag.
+
+    If not running (no thread or thread dead), this is a no-op.
 
     Args:
         state: Current auto mode state.
         agent: AgentRunner instance.
         logger: Logger instance.
         timeout_seconds: Max time to wait for thread to join.
+        state_store: Optional state store for persisting user preference.
+            When provided, records that the user explicitly disabled
+            Auto Mode (persisted across app restarts).
 
     Returns:
         Updated AutoModeState.
     """
-    if not state.is_running:
+    # Derive running from actual thread liveness, not stale flag
+    thread_alive = state.thread is not None and state.thread.is_alive()
+    if not thread_alive:
         logger.debug("Auto mode not running, ignoring stop request")
-        return state
+        # Persist user intent (only when state_store provided = explicit toggle)
+        if state_store is not None:
+            set_auto_mode_enabled(state_store, False)
+        return AutoModeState(
+            is_running=False,
+            thread=None,
+            last_error=state.last_error,
+        )
+
+    # Persist user intent (only when state_store provided = explicit toggle)
+    if state_store is not None:
+        set_auto_mode_enabled(state_store, False)
 
     logger.info("Stopping auto mode")
 

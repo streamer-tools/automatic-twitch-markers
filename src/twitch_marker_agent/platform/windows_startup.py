@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Registry constants (Windows-only, used inside functions)
 _RUN_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
-_APP_NAME = "TwitchMarkerAgent"
+_APP_NAME = "AutomaticTwitchMarkers"
 
 
 class StartupError(Exception):

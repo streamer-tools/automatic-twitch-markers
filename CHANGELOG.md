@@ -1,13 +1,22 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.0.1] - 2026-03-10
+
+### Added
+- Auto Mode preference now persists across app restarts and PC reboots via `StateStore` (`tray.auto_mode_enabled` key).
+- Auto Mode auto-starts on launch if the persisted preference is enabled and authentication is valid; surfaces a tray notification when auth is invalid.
 
 ### Changed
-- No unreleased entries yet.
+- Built EXE renamed from `TwitchMarkerAgent.exe` to `Automatic Twitch Markers.exe`.
+- Tray tooltip title updated to `Automatic Twitch Markers`.
+- CI release artifact renamed to `automatic-twitch-markers-windows.zip`.
+- Windows startup registry value renamed from `TwitchMarkerAgent` to `AutomaticTwitchMarkers`.
+- `start_auto_mode()` and `stop_auto_mode()` now derive running state from `thread.is_alive()` instead of the stale `is_running` boolean, eliminating the intermittent Auto Mode refusal-to-start bug.
+- Persisted Auto Mode preference is written only on explicit user toggle (start/stop from tray menu); app exit and auto-start failure do not clear it.
 
 ## [1.0.0] - 2026-02-13
 

@@ -32,7 +32,7 @@ Final outcome: a reliable, low-maintenance marker export workflow that users can
 ## Quick Start (Portable Release)
 1. Download the latest Windows zip from [GitHub Releases](https://github.com/streamer-tools/automatic-twitch-markers/releases).
 2. Extract the zip to a folder you control.
-3. Run `TwitchMarkerAgent.exe`.
+3. Run `Automatic Twitch Markers.exe`.
 4. Click **Authenticate with Twitch** in the tray menu.
 5. Use **Fetch Latest Stream Markers** or start **Auto Mode**.
 
@@ -40,6 +40,7 @@ Final outcome: a reliable, low-maintenance marker export workflow that users can
 
 ## Features
 - Auto Mode: listens for `stream.offline` and exports markers automatically.
+- Auto Mode remembers your preference across app restarts and PC reboots.
 - Manual fetch: export markers from the latest VOD on demand.
 - Multi-fetch: export markers across a date range (up to 60 days).
 - Export formats: Twitch-style CSV (always) and optional Resolve-compatible EDL.

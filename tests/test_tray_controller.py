@@ -14,15 +14,18 @@ from unittest.mock import MagicMock, patch
 
 from twitch_marker_agent.tray_controller import (
     AutoModeState,
+    TRAY_AUTO_MODE_ENABLED_KEY,
     TRAY_EDL_ENABLED_KEY,
     TRAY_OUTPUT_DIR_KEY,
     ManualFetchResult,
     TrayState,
+    get_auto_mode_enabled,
     get_edl_enabled,
     get_export_formats_from_edl_flag,
     get_manual_fetch_formats,
     resolve_output_dir,
     run_manual_fetch,
+    set_auto_mode_enabled,
     set_edl_enabled,
     set_output_dir,
     start_auto_mode,
@@ -617,7 +620,8 @@ class TestStopAutoMode(unittest.TestCase):
     def test_calls_request_stop_and_joins(self) -> None:
         """Should call agent.request_stop and join thread."""
         mock_thread = MagicMock()
-        mock_thread.is_alive.return_value = False
+        # Thread alive at entry, dead after join
+        mock_thread.is_alive.side_effect = [True, False]
         state = AutoModeState(is_running=True, thread=mock_thread)
         agent = MagicMock()
         agent.last_error = None
@@ -631,14 +635,14 @@ class TestStopAutoMode(unittest.TestCase):
         self.assertIsNone(new_state.thread)
 
     def test_noop_when_not_running(self) -> None:
-        """Should return same state if not running."""
+        """Should return stopped state if not running."""
         state = AutoModeState(is_running=False)
         agent = MagicMock()
         logger = MagicMock(spec=logging.Logger)
 
         new_state = stop_auto_mode(state, agent, logger)
 
-        self.assertIs(new_state, state)
+        self.assertFalse(new_state.is_running)
         agent.request_stop.assert_not_called()
 
     def test_timeout_records_warning(self) -> None:
@@ -652,14 +656,15 @@ class TestStopAutoMode(unittest.TestCase):
 
         new_state = stop_auto_mode(state, agent, logger, timeout_seconds=0.1)
 
-        # Should still mark as stopped despite timeout
-        self.assertFalse(new_state.is_running)
+        # Thread still alive = state reflects running
+        self.assertTrue(new_state.is_running)
         logger.warning.assert_called()
 
     def test_no_secrets_in_logs(self) -> None:
         """Should not log tokens in auto mode paths."""
         mock_thread = MagicMock()
-        mock_thread.is_alive.return_value = False
+        # Thread alive initially, dead after join
+        mock_thread.is_alive.side_effect = [True, False]
         state = AutoModeState(is_running=True, thread=mock_thread)
         agent = MagicMock()
         agent.last_error = "secret_token_12345"  # Simulate error with secret
@@ -827,6 +832,249 @@ class TestStopAutoMode(unittest.TestCase):
         self.assertFalse(result.is_running)
         self.assertIsNone(result.thread)
         self.assertEqual(result.last_error, "some error")  # From agent
+
+# =============================================================================
+# Tests for Auto Mode Persistence Functions
+# =============================================================================
+
+
+class TestGetAutoModeEnabled(unittest.TestCase):
+    """Tests for get_auto_mode_enabled function."""
+
+    def test_returns_false_by_default(self) -> None:
+        """Should return False when StateStore has no value."""
+        state_store = make_mock_state_store()
+        state_store.get_state.return_value = None
+
+        result = get_auto_mode_enabled(state_store)
+
+        self.assertFalse(result)
+        state_store.get_state.assert_called_once_with(TRAY_AUTO_MODE_ENABLED_KEY)
+
+    def test_returns_true_for_true_string(self) -> None:
+        """Should return True for 'true' string."""
+        state_store = make_mock_state_store()
+        state_store.get_state.return_value = "true"
+
+        result = get_auto_mode_enabled(state_store)
+
+        self.assertTrue(result)
+
+    def test_returns_false_for_false_string(self) -> None:
+        """Should return False for 'false' string."""
+        state_store = make_mock_state_store()
+        state_store.get_state.return_value = "false"
+
+        result = get_auto_mode_enabled(state_store)
+
+        self.assertFalse(result)
+
+    def test_case_insensitive(self) -> None:
+        """Should handle case-insensitive values."""
+        state_store = make_mock_state_store()
+        state_store.get_state.return_value = "TRUE"
+
+        result = get_auto_mode_enabled(state_store)
+
+        self.assertTrue(result)
+
+
+class TestSetAutoModeEnabled(unittest.TestCase):
+    """Tests for set_auto_mode_enabled function."""
+
+    def test_persists_true(self) -> None:
+        """Should store 'true' when enabled=True."""
+        state_store = make_mock_state_store()
+
+        set_auto_mode_enabled(state_store, True)
+
+        state_store.set_state.assert_called_once_with(
+            TRAY_AUTO_MODE_ENABLED_KEY, "true"
+        )
+
+    def test_persists_false(self) -> None:
+        """Should store 'false' when enabled=False."""
+        state_store = make_mock_state_store()
+
+        set_auto_mode_enabled(state_store, False)
+
+        state_store.set_state.assert_called_once_with(
+            TRAY_AUTO_MODE_ENABLED_KEY, "false"
+        )
+
+
+# =============================================================================
+# Tests for Start/Stop with Persistence + Stale Flag Fix
+# =============================================================================
+
+
+class TestStartAutoModePersistence(unittest.TestCase):
+    """Tests for start_auto_mode persistence behavior."""
+
+    def test_persists_enabled_when_state_store_provided(self) -> None:
+        """Should write 'true' to state store when state_store is provided."""
+        state = AutoModeState()
+        agent = MagicMock()
+        logger = MagicMock(spec=logging.Logger)
+        state_store = make_mock_state_store()
+
+        with patch("twitch_marker_agent.tray_controller.asyncio.run"):
+            new_state = start_auto_mode(state, agent, logger, state_store=state_store)
+
+        state_store.set_state.assert_called_once_with(
+            TRAY_AUTO_MODE_ENABLED_KEY, "true"
+        )
+        self.assertTrue(new_state.is_running)
+
+    def test_does_not_persist_without_state_store(self) -> None:
+        """Should not write to state store when state_store is not provided."""
+        state = AutoModeState()
+        agent = MagicMock()
+        logger = MagicMock(spec=logging.Logger)
+
+        with patch("twitch_marker_agent.tray_controller.asyncio.run"):
+            start_auto_mode(state, agent, logger)
+
+        # No state_store interaction (auto-start-on-launch case)
+
+
+class TestStopAutoModePersistence(unittest.TestCase):
+    """Tests for stop_auto_mode persistence behavior."""
+
+    def test_persists_disabled_when_state_store_provided(self) -> None:
+        """Should write 'false' to state store when state_store is provided."""
+        mock_thread = MagicMock()
+        mock_thread.is_alive.return_value = True  # Thread alive for stop
+        mock_thread.join.return_value = None
+        # After join, thread reports dead
+        mock_thread.is_alive.side_effect = [True, False]
+        state = AutoModeState(is_running=True, thread=mock_thread)
+        agent = MagicMock()
+        agent.last_error = None
+        logger = MagicMock(spec=logging.Logger)
+        state_store = make_mock_state_store()
+
+        stop_auto_mode(state, agent, logger, state_store=state_store)
+
+        state_store.set_state.assert_called_once_with(
+            TRAY_AUTO_MODE_ENABLED_KEY, "false"
+        )
+
+    def test_does_not_persist_without_state_store(self) -> None:
+        """Should not write to state store when state_store is not provided."""
+        mock_thread = MagicMock()
+        mock_thread.is_alive.return_value = False
+        state = AutoModeState(is_running=True, thread=mock_thread)
+        agent = MagicMock()
+        agent.last_error = None
+        logger = MagicMock(spec=logging.Logger)
+
+        stop_auto_mode(state, agent, logger)
+
+        # No state_store interaction (graceful shutdown case)
+
+
+# =============================================================================
+# Tests for Stale Flag / Dead Thread Lifecycle
+# =============================================================================
+
+
+class TestStartAutoModeDeadThread(unittest.TestCase):
+    """Regression tests for dead-thread refusal-to-start bug."""
+
+    def test_dead_thread_with_stale_is_running_allows_restart(self) -> None:
+        """Should start a new thread even if is_running=True but thread is dead.
+
+        This is the core regression test for the intermittent Auto Mode
+        refusal-to-start bug: thread dies but is_running stays True.
+        """
+        mock_dead_thread = MagicMock()
+        mock_dead_thread.is_alive.return_value = False
+
+        # Stale state: is_running=True but thread is dead
+        state = AutoModeState(
+            is_running=True,
+            thread=mock_dead_thread,
+            last_error="Connection lost",
+        )
+        agent = MagicMock()
+        logger = MagicMock(spec=logging.Logger)
+
+        with patch("twitch_marker_agent.tray_controller.asyncio.run"):
+            new_state = start_auto_mode(state, agent, logger)
+
+        # Should have started a new thread
+        self.assertTrue(new_state.is_running)
+        self.assertIsNotNone(new_state.thread)
+        self.assertIsNot(new_state.thread, mock_dead_thread)
+        self.assertIsNone(new_state.last_error)
+
+    def test_none_thread_allows_start(self) -> None:
+        """Should start when thread is None (fresh state)."""
+        state = AutoModeState(is_running=False, thread=None)
+        agent = MagicMock()
+        logger = MagicMock(spec=logging.Logger)
+
+        with patch("twitch_marker_agent.tray_controller.asyncio.run"):
+            new_state = start_auto_mode(state, agent, logger)
+
+        self.assertTrue(new_state.is_running)
+        self.assertIsNotNone(new_state.thread)
+
+    def test_alive_thread_blocks_start(self) -> None:
+        """Should not start when thread is still alive."""
+        mock_alive_thread = MagicMock()
+        mock_alive_thread.is_alive.return_value = True
+
+        state = AutoModeState(
+            is_running=True,
+            thread=mock_alive_thread,
+        )
+        agent = MagicMock()
+        logger = MagicMock(spec=logging.Logger)
+
+        new_state = start_auto_mode(state, agent, logger)
+
+        # Should be unchanged
+        self.assertIs(new_state, state)
+
+
+class TestStopAutoModeDeadThread(unittest.TestCase):
+    """Tests for stop_auto_mode with dead/missing thread."""
+
+    def test_dead_thread_returns_clean_stopped_state(self) -> None:
+        """Should return clean stopped state when thread is already dead."""
+        mock_dead_thread = MagicMock()
+        mock_dead_thread.is_alive.return_value = False
+
+        state = AutoModeState(
+            is_running=True,
+            thread=mock_dead_thread,
+            last_error="Connection lost",
+        )
+        agent = MagicMock()
+        agent.last_error = None
+        logger = MagicMock(spec=logging.Logger)
+
+        new_state = stop_auto_mode(state, agent, logger)
+
+        self.assertFalse(new_state.is_running)
+        self.assertIsNone(new_state.thread)
+        # Should NOT call request_stop (thread is already dead)
+        agent.request_stop.assert_not_called()
+
+    def test_none_thread_returns_clean_stopped_state(self) -> None:
+        """Should return clean stopped state when thread is None."""
+        state = AutoModeState(is_running=True, thread=None)
+        agent = MagicMock()
+        agent.last_error = None
+        logger = MagicMock(spec=logging.Logger)
+
+        new_state = stop_auto_mode(state, agent, logger)
+
+        self.assertFalse(new_state.is_running)
+        self.assertIsNone(new_state.thread)
+        agent.request_stop.assert_not_called()
 
 
 if __name__ == "__main__":
